@@ -1,0 +1,26 @@
+Dark Eagle - SaaS Starter Kit (Next.js 16)
+Copyright (c) 2025 Future Fit Inc.
+
+NOTICE TO USER:
+
+1.  OWNERSHIP:
+    This software and its source code are the proprietary property of Future Fit Inc. 
+    By purchasing this item, you are granted a license to use it under the terms specified by the marketplace where it was purchased (e.g., Codester Regular or Extended License). You do NOT acquire ownership of the software itself.
+
+2.  RESTRICTIONS:
+    - You may NOT resell, redistribute, sub-license, or share this item or any of its source files "as-is" to third parties.
+    - You may NOT include this item in a bundle or starter kit for sale.
+    - You may NOT use this item to create a competing product (e.g., another UI starter kit or template).
+    
+    If you purchased a REGULAR LICENSE:
+    - You may use this item for ONE single end product (personal or commercial) which can be free or sold to end users.
+    - You cannot re-distribute the source code.
+
+    If you purchased an EXTENDED LICENSE:
+    - You may use this item for UNLIMITED end products.
+    - You may NOT re-distribute the source code as a standalone product.
+
+3.  LIABILITY:
+    This software is provided "AS IS", without warranty of any kind, express or implied. The authors or copyright holders shall not be liable for any claim, damages or other liability arising from the use of this software.
+
+For full license terms, please refer to the "Licensing" section of the marketplace where you purchased this item.

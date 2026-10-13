@@ -1,0 +1,19 @@
+# Dependencies / build
+node_modules/
+dist/
+coverage/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
