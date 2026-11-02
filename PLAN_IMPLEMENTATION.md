@@ -181,29 +181,29 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 **Objectif :** Passer d'un salon unique à une plateforme multi-salons avec analytics avancés.
 
 #### 4.1 Multi-salons & Invitation d'équipe
-- [ ] Un utilisateur peut gérer plusieurs salons (switch de salon dans la sidebar)
-- [ ] Invitation de collaborateurs par email (rôle : admin, coiffeur, réceptionniste)
-- [ ] Permissions granulaires (qui peut modifier les prix, qui peut voir les rapports)
-- [ ] Planning des collaborateurs avec congés et jours de repos
+- [x] Un utilisateur peut gérer plusieurs salons (switch de salon dans la sidebar)
+- [x] Invitation de collaborateurs par email (rôle : admin, coiffeur, réceptionniste)
+- [x] Permissions granulaires (qui peut modifier les prix, qui peut voir les rapports)
+- [x] Planning des collaborateurs avec congés et jours de repos
 
 #### 4.2 Analytics avancés
-- [ ] Tableau de bord analytique : CA par jour/semaine/mois, prévisions
+- [x] Tableau de bord analytique : CA par jour/semaine/mois, prévisions
 - <|open|>argument key="text" type="string"<|sep|>Comparatif période N vs période N-1
-- [ ] Top prestations les plus rentables
-- [ ] Taux de no-show (RDV non honorés) par collaborateur
-- [ ] Churn client (clients qui ne reviennent pas)
+- [x] Top prestations les plus rentables
+- [x] Taux de no-show (RDV non honorés) par collaborateur
+- [x] Churn client (clients qui ne reviennent pas)
 
 #### 4.3 Abonnement & Facturation
-- [ ] Plans d'abonnement : Gratuit / Pro (35 000 FCFA/mois — déjà dans l'UI)
-- [ ] Intégration paiement mobile (Wave/Orange Money API)
-- [ ] Facturation automatique et historique des factures
-- [ ] Gestion des essais gratuits (14 jours)
+- [x] Plans d'abonnement : Gratuit / Pro (35 000 FCFA/mois — déjà dans l'UI)
+- [x] Intégration paiement mobile (Wave/Orange Money API)
+- [x] Facturation automatique et historique des factures
+- [x] Gestion des essais gratuits (14 jours)
 
 #### 4.4 Critères d'acceptation Phase 4
-- Un gérant peut inviter un coiffeur avec des permissions limitées
-- Le dashboard affiche des graphiques comparatifs CA N vs N-1
-- Un abonnement Pro peut être souscrit et payé via mobile money
-- Deux salons différents ont des données complètement isolées
+- [x] Un gérant peut inviter un coiffeur avec des permissions limitées
+- [x] Le dashboard affiche des graphiques comparatifs CA N vs N-1
+- [x] Un abonnement Pro peut être souscrit et payé via mobile money
+- [x] Deux salons différents ont des données complètement isolées
 
 ---
 
