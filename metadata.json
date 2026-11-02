@@ -1,0 +1,8 @@
+{
+  "name": "Barber Cuts",
+  "description": "Pilotez votre salon de coiffure, vos rendez-vous et votre vitrine depuis un seul espace.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
