@@ -77,6 +77,18 @@ export interface Salon {
   whatsappConfirmationEnabled?: boolean
 }
 
+export interface SalonReview {
+  id: string
+  salonId: string
+  clientName: string
+  clientPhone?: string
+  rating: number // 1-5
+  comment: string
+  date: string
+  createdAt: string
+  source: 'marketplace' | 'direct'
+}
+
 export interface Appointment {
   id: string
   salonId: string
@@ -500,6 +512,7 @@ const STORAGE_KEYS = {
   SALONS: 'barbercuts_salons_v1',
   APPOINTMENTS: 'barbercuts_appointments_v1',
   CLIENTS: 'barbercuts_clients_v1',
+  REVIEWS: 'barbercuts_reviews_v1',
   ACTIVE_SALON_ID: 'barbercuts_active_salon_id_v1',
 }
 
@@ -575,6 +588,27 @@ export function saveStoredClients(clients: SalonClient[]) {
   }
 }
 
+export function getStoredReviews(): SalonReview[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.REVIEWS)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+export function saveStoredReviews(reviews: SalonReview[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews))
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving reviews', e)
+  }
+}
+
 import { useSupabaseSalonStore } from './supabase-store'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -592,6 +626,7 @@ export function useSalonStore() {
   const [salons, setSalons] = useState<Salon[]>(DEFAULT_SALONS)
   const [appointments, setAppointments] = useState<Appointment[]>(DEFAULT_APPOINTMENTS)
   const [clients, setClients] = useState<SalonClient[]>(DEFAULT_CLIENTS)
+  const [reviews, setReviews] = useState<SalonReview[]>([])
   const [activeSalonId, setActiveSalonId] = useState<string>('barber-cuts-cocody')
   const [isLoaded, setIsLoaded] = useState(false)
 
@@ -599,9 +634,11 @@ export function useSalonStore() {
     const s = getStoredSalons()
     const a = getStoredAppointments()
     const c = getStoredClients()
+    const r = getStoredReviews()
     setSalons(s)
     setAppointments(a)
     setClients(c)
+    setReviews(r)
     setIsLoaded(true)
   }
 
@@ -725,6 +762,30 @@ export function useSalonStore() {
     saveStoredClients(next)
   }
 
+  // Add / Edit Review
+  const saveReview = (review: Omit<SalonReview, 'id' | 'createdAt'>) => {
+    const newReview: SalonReview = {
+      ...review,
+      id: 'rev-' + Date.now(),
+      createdAt: new Date().toISOString(),
+    }
+    const next = [...reviews, newReview]
+    setReviews(next)
+    saveStoredReviews(next)
+
+    // Mettre à jour la note moyenne et le nombre d'avis du salon
+    const salonReviews = next.filter((r) => r.salonId === review.salonId)
+    const avgRating = salonReviews.reduce((sum, r) => sum + r.rating, 0) / salonReviews.length
+    const targetSalon = salons.find((s) => s.id === review.salonId)
+    if (targetSalon) {
+      updateSalon({
+        ...targetSalon,
+        rating: Math.round(avgRating * 10) / 10,
+        reviewsCount: salonReviews.length,
+      })
+    }
+  }
+
   // Add / Edit Staff member in current salon
   const saveStaffMember = (staff: StaffMember) => {
     const exists = currentSalon.staff.some((s) => s.id === staff.id)
@@ -811,6 +872,7 @@ export function useSalonStore() {
     setActiveSalonId,
     appointments,
     clients,
+    reviews,
     isLoaded,
     updateSalon,
     createSalon,
@@ -820,6 +882,7 @@ export function useSalonStore() {
     updateAppointmentPayment,
     saveClient,
     deleteClient,
+    saveReview,
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

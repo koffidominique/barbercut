@@ -9,6 +9,7 @@ import type {
   StaffMember,
   SalonService,
   ShowcasePhoto,
+  SalonReview,
 } from '@/lib/store'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -599,6 +600,8 @@ export function useSupabaseSalonStore() {
     updateAppointmentPayment,
     saveClient,
     deleteClient,
+    reviews: [] as SalonReview[],
+    saveReview: () => {},
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

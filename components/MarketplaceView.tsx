@@ -39,6 +39,7 @@ export function MarketplaceView({
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('Tous')
   const [selectedCategory, setSelectedCategory] = useState('Tous')
+  const [sortBy, setSortBy] = useState<'mieuxNote' | 'moinsCher' | 'plusProche' | 'nouveautes'>('mieuxNote')
 
   // Booking modal state
   const [bookingSalon, setBookingSalon] = useState<Salon | null>(null)
@@ -78,6 +79,26 @@ export function MarketplaceView({
 
   const neighborhoods = ['Tous', 'Cocody', 'Marcory', 'Plateau', 'Deux Plateaux']
   const categories = ['Tous', 'Hommes & Barbe', 'Dames & Tresses', 'Enfants']
+
+  // Tri appliqué après le filtrage
+  const sortedSalons = [...filteredSalons].sort((a, b) => {
+    if (sortBy === 'mieuxNote') return b.rating - a.rating
+    if (sortBy === 'moinsCher') {
+      const priceA = Math.min(...a.services.map((s) => s.price))
+      const priceB = Math.min(...b.services.map((s) => s.price))
+      return priceA - priceB
+    }
+    if (sortBy === 'plusProche') {
+      // Tri par quartier (ordre de proximité approximatif, Plateaux/Cocody en premier)
+      const order: Record<string, number> = { 'Plateau': 1, 'Cocody Angré': 2, 'Cocody': 3, 'Deux Plateaux': 4, 'Marcory': 5 }
+      return (order[a.neighborhood] || 99) - (order[b.neighborhood] || 99)
+    }
+    if (sortBy === 'nouveautes') {
+      // Par défaut les salons déjà triés par ordre d'affichage (les plus récents en premier)
+      return 0
+    }
+    return 0
+  })
 
   const handleOpenBooking = (salon: Salon, service?: SalonService) => {
     setBookingSalon(salon)
@@ -218,11 +239,36 @@ export function MarketplaceView({
               Vitrines & Annonces des Salons Partenaires
             </h2>
             <p className="mt-1 text-xs text-[#7c807b]">
-              {filteredSalons.length} salon{filteredSalons.length > 1 ? 's' : ''} enregistré{filteredSalons.length > 1 ? 's' : ''} dans l’ERP avec vitrine active
+              {sortedSalons.length} salon{sortedSalons.length > 1 ? 's' : ''} enregistré{sortedSalons.length > 1 ? 's' : ''} dans l’ERP avec vitrine active
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Tri */}
+            <div className="flex items-center gap-1.5 p-1 bg-[#edeae3] rounded-xl">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#6b7069] px-2 py-1.5">
+                Trier par
+              </label>
+              {[
+                { id: 'mieuxNote', label: 'Mieux noté' },
+                { id: 'moinsCher', label: 'Moins cher' },
+                { id: 'plusProche', label: 'Plus proche' },
+                { id: 'nouveautes', label: 'Nouveautés' },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setSortBy(o.id as any)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                    sortBy === o.id
+                      ? 'bg-[#202321] text-white shadow-sm'
+                      : 'text-[#6b7069] hover:text-[#202321]'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
             {/* Neighborhood filter */}
             <div className="flex items-center gap-1.5 p-1 bg-[#edeae3] rounded-xl">
               {neighborhoods.map((n) => (
@@ -260,7 +306,7 @@ export function MarketplaceView({
         </div>
 
         {/* Salons Showcase Grid */}
-        {filteredSalons.length === 0 ? (
+        {sortedSalons.length === 0 ? (
           <motion.div
             initial="hidden"
             animate="visible"
@@ -280,7 +326,7 @@ export function MarketplaceView({
             variants={staggerContainer}
             className="grid gap-8 lg:grid-cols-2"
           >
-            {filteredSalons.map((salon) => (
+            {sortedSalons.map((salon) => (
               <motion.div
                 key={salon.id}
                 initial="hidden"
