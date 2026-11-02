@@ -37,6 +37,7 @@ import { ERPServicesView } from '@/components/ERPServicesView'
 import { ERPTeamView } from '@/components/ERPTeamView'
 import { ERPReportsView } from '@/components/ERPReportsView'
 import { ERPSettingsView } from '@/components/ERPSettingsView'
+import { WeeklyRevenueChart } from '@/components/WeeklyRevenueChart'
 import { MarketplaceView } from '@/components/MarketplaceView'
 
 export default function Page() {
@@ -485,6 +486,9 @@ export default function Page() {
                   positive
                 />
               </div>
+
+              {/* D3 Weekly Revenue Chart */}
+              <WeeklyRevenueChart />
 
               {/* Main Content Split: Schedule & Vitrine Spotlight */}
               <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
