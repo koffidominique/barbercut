@@ -70,6 +70,7 @@ export function mapSalonRow(
     openingHours: row.opening_hours || "",
     rccm: row.rccm || undefined,
     currency: row.currency || "FCFA",
+    timezone: row.timezone || undefined,
     smsRemindersEnabled: row.sms_reminders_enabled ?? true,
     whatsappConfirmationEnabled: row.whatsapp_confirmation_enabled ?? true,
     latitude: toCoordinate(row.latitude),
@@ -99,6 +100,7 @@ export function salonUpdatePayload(salon: Salon) {
     opening_hours: salon.openingHours,
     rccm: salon.rccm,
     currency: salon.currency,
+    timezone: salon.timezone,
     sms_reminders_enabled: salon.smsRemindersEnabled,
     whatsapp_confirmation_enabled: salon.whatsappConfirmationEnabled,
     latitude:

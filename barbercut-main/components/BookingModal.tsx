@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -411,7 +412,7 @@ export function BookingModal({
                 <div className="flex justify-between pt-1 text-sm font-bold text-[#202321]">
                   <span>Total à régler sur place</span>
                   <span className="text-[#d47b59]">
-                    {confirmedBooking.servicePrice.toLocaleString('fr-FR')} FCFA
+                    {formatPrice(confirmedBooking.servicePrice, salon)}
                   </span>
                 </div>
               </div>
@@ -557,7 +558,7 @@ export function BookingModal({
                               </div>
                               <div className="text-right">
                                 <span className="font-serif text-xs font-bold text-[#bd664a] block">
-                                  {srv.price.toLocaleString('fr-FR')} F
+                                  {formatPrice(srv.price, salon)}
                                 </span>
                                 <span className="text-[10px] text-[#868a83]">
                                   {srv.duration} min · {srv.category}
@@ -774,7 +775,7 @@ export function BookingModal({
                     <div className="flex justify-between pt-1 text-sm font-bold text-[#202321]">
                       <span>Total à régler sur place</span>
                       <span className="text-[#d47b59]">
-                        {(activeService?.price ?? 0).toLocaleString('fr-FR')} FCFA
+                        {formatPrice(activeService?.price ?? 0, salon)}
                       </span>
                     </div>
                   </div>

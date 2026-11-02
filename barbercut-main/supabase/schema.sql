@@ -592,6 +592,13 @@ create unique index if not exists uniq_appointment_slot
     time
   )
   where status <> 'cancelled';
+-- P3 localisation : fuseau horaire du salon (IANA), pour un affichage
+-- correct des dates/heure de réservation quel que soit le pays du gérant.
+alter table public.salons
+  add column if not exists timezone text default 'Africa/Dakar';
+
+comment on column public.salons.timezone is
+  'Identifiant de fuseau IANA (ex. Africa/Dakar, Europe/Paris). Défaut : Afrique de l''Ouest.';
 -- ============================================================
 -- Correctif P2 — Persistance local → base (cf AMELIORATIONS.md §2)
 -- À appliquer après 20240103000000_fix_appointments_rls.sql

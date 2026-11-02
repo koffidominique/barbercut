@@ -86,7 +86,10 @@ export interface Salon {
   staff: StaffMember[];
   openingHours: string;
   rccm?: string;
+  /** Devise du salon : code ISO 4217 ("XOF", "EUR"…) ou texte hérité ("FCFA"). */
   currency?: string;
+  /** Fuseau IANA du salon (ex. "Africa/Dakar") ; défaut géré par lib/locale.ts. */
+  timezone?: string;
   smsRemindersEnabled?: boolean;
   whatsappConfirmationEnabled?: boolean;
   latitude?: number;
