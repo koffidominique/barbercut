@@ -92,6 +92,8 @@ export interface Appointment {
   source: 'marketplace' | 'direct'
   notes?: string
   createdAt: string
+  paymentStatus?: 'unpaid' | 'partial' | 'paid'
+  paymentMethod?: 'cash' | 'wave' | 'orange_money' | 'card'
 }
 
 const DEFAULT_CLIENTS: SalonClient[] = [
@@ -573,7 +575,20 @@ export function saveStoredClients(clients: SalonClient[]) {
   }
 }
 
+import { useSupabaseSalonStore } from './supabase-store'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const IS_SUPABASE_CONFIGURED = Boolean(
+  SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('your-')
+)
+
 export function useSalonStore() {
+  // Si Supabase est configuré, déléguer au store cloud
+  if (IS_SUPABASE_CONFIGURED) {
+    return useSupabaseSalonStore()
+  }
+
   const [salons, setSalons] = useState<Salon[]>(DEFAULT_SALONS)
   const [appointments, setAppointments] = useState<Appointment[]>(DEFAULT_APPOINTMENTS)
   const [clients, setClients] = useState<SalonClient[]>(DEFAULT_CLIENTS)
@@ -611,7 +626,7 @@ export function useSalonStore() {
   }
 
   // Create an appointment (e.g. from marketplace booking or ERP)
-  const bookAppointment = (data: Omit<Appointment, 'id' | 'createdAt'>): Appointment => {
+  const bookAppointment = (data: Omit<Appointment, 'id' | 'createdAt'>) => {
     const newAppointment: Appointment = {
       ...data,
       id: 'apt-' + Date.now(),
@@ -673,6 +688,26 @@ export function useSalonStore() {
     saveStoredAppointments(next)
   }
 
+  // Update appointment payment status
+  const updateAppointmentPayment = (
+    id: string,
+    paymentStatus: Appointment['paymentStatus'],
+    paymentMethod?: Appointment['paymentMethod']
+  ) => {
+    const next = appointments.map((apt) =>
+      apt.id === id
+        ? {
+            ...apt,
+            paymentStatus,
+            paymentMethod,
+            updatedAt: new Date().toISOString(),
+          }
+        : apt
+    )
+    setAppointments(next)
+    saveStoredAppointments(next)
+  }
+
   // Add / Edit Client
   const saveClient = (client: SalonClient) => {
     const exists = clients.some((c) => c.id === client.id)
@@ -721,6 +756,54 @@ export function useSalonStore() {
     setClients(DEFAULT_CLIENTS)
   }
 
+  // Create a new salon (localStorage fallback)
+  const createSalon = async (
+    ownerId: string,
+    data: Partial<Salon>
+  ): Promise<Salon | null> => {
+    const newSalon: Salon = {
+      id: 'salon-' + Date.now(),
+      name: data.name || 'Mon Salon Barber Cuts',
+      tagline: data.tagline || '',
+      description: data.description || '',
+      city: data.city || 'Abidjan',
+      neighborhood: data.neighborhood || '',
+      address: data.address || '',
+      phone: data.phone || '',
+      whatsapp: data.whatsapp || '',
+      rating: 0,
+      reviewsCount: 0,
+      isPublished: false,
+      coverImage: data.coverImage || '/images/placeholder-logo.png',
+      openingHours: data.openingHours || 'Mar - Dim: 08:30 - 20:30',
+      rccm: data.rccm,
+      currency: 'FCFA',
+      smsRemindersEnabled: true,
+      whatsappConfirmationEnabled: true,
+      features: [],
+      gallery: [],
+      services: [
+        {
+          id: 'srv-' + Date.now(),
+          name: 'Coupe signature & Dégradé américain',
+          category: 'Hommes',
+          price: 8000,
+          duration: 45,
+          description: 'Shampoing purifiant, dégradé aux ciseaux et tondeuse, traçage net au rasoir et coiffage.',
+          isPopular: true,
+        },
+      ],
+      staff: [],
+    }
+
+    const next = [newSalon, ...salons]
+    setSalons(next)
+    saveStoredSalons(next)
+    setActiveSalonId(newSalon.id)
+    localStorage.setItem('barbercuts_active_salon_id_v1', newSalon.id)
+    return newSalon
+  }
+
   return {
     salons,
     currentSalon,
@@ -730,9 +813,11 @@ export function useSalonStore() {
     clients,
     isLoaded,
     updateSalon,
+    createSalon,
     bookAppointment,
     updateAppointmentStatus,
     deleteAppointment,
+    updateAppointmentPayment,
     saveClient,
     deleteClient,
     saveStaffMember,

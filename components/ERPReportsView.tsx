@@ -43,6 +43,64 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
   ]
 
   const handleExport = () => {
+    const headers = [
+      'ID',
+      'Client',
+      'Téléphone',
+      'Prestation',
+      'Prix (FCFA)',
+      'Coiffeur',
+      'Date',
+      'Heure',
+      'Statut',
+      'Source',
+      'Paiement',
+      'Méthode de paiement',
+      'Créé le',
+    ]
+
+    const rows = salonApts.map((a) => [
+      a.id,
+      a.clientName,
+      a.clientPhone,
+      a.serviceName,
+      a.servicePrice,
+      a.staffName,
+      a.date,
+      a.time,
+      a.status,
+      a.source,
+      a.paymentStatus || 'unpaid',
+      a.paymentMethod || '',
+      a.createdAt,
+    ])
+
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map((row) =>
+        row
+          .map((cell) => {
+            const str = String(cell)
+            // Échapper les points-virgules et guillemets
+            if (str.includes(';') || str.includes('"') || str.includes('\n')) {
+              return '"' + str.replace(/"/g, '""') + '"'
+            }
+            return str
+          })
+          .join(';')
+      ),
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `rapport-barber-cuts-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
     setDownloadToast(true)
     setTimeout(() => setDownloadToast(false), 3000)
   }

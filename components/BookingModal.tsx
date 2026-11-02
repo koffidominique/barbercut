@@ -14,7 +14,8 @@ import {
   ArrowRight,
   MapPin,
 } from 'lucide-react'
-import { Salon, SalonService, Appointment } from '@/lib/store'
+import { Salon, SalonService, Appointment, useSalonStore } from '@/lib/store'
+import { useNotifications } from '@/lib/notifications'
 
 interface BookingModalProps {
   salon: Salon
@@ -51,6 +52,7 @@ export function BookingModal({
   const [notes, setNotes] = useState<string>('')
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [confirmedBooking, setConfirmedBooking] = useState<Appointment | null>(null)
+  const { addNotification } = useNotifications()
 
   if (!isOpen) return null
 
@@ -90,6 +92,15 @@ export function BookingModal({
     }
     onBookSuccess(created)
     setConfirmedBooking(created)
+
+    // Notification in-app pour le gérant du salon
+    addNotification({
+      type: 'appointment',
+      title: 'Nouveau rendez-vous Marketplace',
+      message: `${clientName.trim()} a réservé ${activeService.name} pour le ${selectedDate} à ${selectedTime}.`,
+      actionUrl: '/',
+      actionLabel: 'Voir dans l\'ERP',
+    })
   }
 
   const resetAndClose = () => {

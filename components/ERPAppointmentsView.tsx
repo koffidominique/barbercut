@@ -23,6 +23,11 @@ interface ERPAppointmentsViewProps {
   salon: Salon
   appointments: Appointment[]
   onUpdateStatus: (id: string, status: Appointment['status']) => void
+  onUpdatePayment: (
+    id: string,
+    paymentStatus: Appointment['paymentStatus'],
+    paymentMethod?: Appointment['paymentMethod']
+  ) => void
   onDeleteAppointment: (id: string) => void
   onAddAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt'>) => Appointment
 }
@@ -31,6 +36,7 @@ export function ERPAppointmentsView({
   salon,
   appointments,
   onUpdateStatus,
+  onUpdatePayment,
   onDeleteAppointment,
   onAddAppointment,
 }: ERPAppointmentsViewProps) {
@@ -303,6 +309,29 @@ export function ERPAppointmentsView({
                       Prestation terminée
                     </span>
                   )}
+
+                  {/* Payment selector */}
+                  <div className="flex items-center gap-1.5">
+                    {apt.paymentStatus === 'unpaid' && (
+                      <button
+                        onClick={() => onUpdatePayment(apt.id, 'paid')}
+                        className="flex items-center gap-1 rounded-lg bg-[#ebf3e8] px-2.5 py-1.5 text-xs font-bold text-[#3e742e] border border-[#cfe2c9] hover:bg-[#dfedda] transition"
+                      >
+                        <span className="text-[#3e742e]">₣</span>
+                        <span>Payé</span>
+                      </button>
+                    )}
+                    {apt.paymentStatus === 'paid' && (
+                      <span className="rounded-lg bg-[#f0f2eb] px-2.5 py-1.5 text-xs font-semibold text-[#3e742e]">
+                        Payé ({apt.paymentMethod || '-'})
+                      </span>
+                    )}
+                    {apt.paymentStatus === 'partial' && (
+                      <span className="rounded-lg bg-[#fdf3ec] px-2.5 py-1.5 text-xs font-semibold text-[#bd664a]">
+                        Partiel
+                      </span>
+                    )}
+                  </div>
 
                   <button
                     onClick={() => onDeleteAppointment(apt.id)}

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useNotifications, type Notification } from '@/lib/notifications'
 import {
   Bell,
   CalendarDays,
@@ -52,11 +53,24 @@ export default function Page() {
     bookAppointment,
     updateAppointmentStatus,
     deleteAppointment,
+    updateAppointmentPayment,
     saveClient,
     deleteClient,
     saveStaffMember,
     deleteStaffMember,
   } = useSalonStore()
+
+  const { notifications, unreadCount, markAsRead } = useNotifications()
+  const [showToast, setShowToast] = useState<Notification | null>(null)
+
+  // Afficher un toast pour la notification la plus récente non lue
+  useEffect(() => {
+    const unread = notifications.find((n) => !n.read)
+    if (unread && !showToast) {
+      setShowToast(unread)
+      markAsRead(unread.id)
+    }
+  }, [notifications, showToast, markAsRead])
 
   const [activeNav, setActiveNav] = useState<string>('Vue d’ensemble')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -681,6 +695,7 @@ export default function Page() {
               salon={currentSalon}
               appointments={appointments}
               onUpdateStatus={updateAppointmentStatus}
+              onUpdatePayment={updateAppointmentPayment}
               onDeleteAppointment={deleteAppointment}
               onAddAppointment={bookAppointment}
             />
@@ -739,6 +754,31 @@ export default function Page() {
           )}
         </div>
       </section>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-[#202321] px-5 py-3 text-xs font-semibold text-white shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200"
+          onClick={() => setShowToast(null)}
+        >
+          <Bell size={16} className="text-[#f4c58d] shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-[#202321]">{showToast.title}</p>
+            <p className="mt-0.5 text-[#747873]">{showToast.message}</p>
+          </div>
+          {showToast.actionUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowToast(null)
+              }}
+              className="mt-1.5 font-bold text-xs text-[#bd664a] underline hover:text-[#a45339]"
+            >
+              {showToast.actionLabel}
+            </button>
+          )}
+        </div>
+      )}
     </main>
   )
 }
