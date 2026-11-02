@@ -150,7 +150,7 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 - [x] Barre de recherche globale (nom salon, prestation, quartier)
 - [x] Filtres avancés : prix, note, disponibilité jour/heure, catégorie
 - [x] Tri : mieux noté, moins cher, plus proche, nouveautés
-- [ ] Carte interactive (intégration Leaflet ou Google Maps avec les salons d'Abidjan)
+- [x] Carte interactive (intégration Leaflet avec les salons d'Abidjan)
 
 #### 3.2 Fiche salon publique enrichie
 - [x] Page dédiée `/salon/[id]` avec SEO (meta tags dynamiques)
@@ -160,9 +160,9 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 
 #### 3.3 Réservation client simplifiée
 - [x] Flow de réservation en 3 étapes (salon → prestation/créneau → confirmation)
-- [ ] Création de compte client optionnelle (réservation en tant qu'invité possible)
-- [ ] Email/SMS de confirmation de réservation
-- [ ] Page "Mes rendez-vous" côté client (historique et annulation)
+- [x] Création de compte client optionnelle (réservation en tant qu'invité possible)
+- [x] Email/SMS de confirmation de réservation (simulé)
+- [x] Page "Mes rendez-vous" côté client (historique et annulation)
 
 #### 3.4 Vitrine salon (côté gérant)
 - [ ] Planification de publication (programmer une photo pour une date future)
