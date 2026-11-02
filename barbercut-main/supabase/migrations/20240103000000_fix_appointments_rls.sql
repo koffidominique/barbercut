@@ -106,16 +106,17 @@ create or replace function public.is_slot_free(
 language sql
 stable
 as $$
+-- Deux rendez-vous se chevauchent si chaque début est antérieur à la fin
+-- de l'autre : start_a < end_b AND start_b < end_a (intervalles half-open).
   select not exists (
     select 1
     from public.appointments a
     where a.salon_id = p_salon_id
       and a.date = p_date
-      and coalesce(a.staff_name, '') = coalesce(p_staff_name '', '')
+      and coalesce(a.staff_name, '') = coalesce(p_staff_name, '')
       and a.status <> 'cancelled'
-      and abs(
-            (extract(epoch from (a.time::time)) - extract(epoch from (p_time::time)))
-          ) < 60 * coalesce(
+      and extract(epoch from (a.time::time))
+          < extract(epoch from (p_time::time)) + 60 * coalesce(
               (select ss.duration
                  from public.salon_services ss
                 where ss.salon_id = p_salon_id
@@ -123,12 +124,21 @@ as $$
                 limit 1),
               45
             )
+      and extract(epoch from (p_time::time))
+          < extract(epoch from (a.time::time)) + 60 * coalesce(
+              (select ss.duration
+                 from public.salon_services ss
+                where ss.salon_id = p_salon_id
+                  and (ss.id = a.service_id or ss.name = a.service_name)
+                limit 1),
+              45
+            )
   );
 $$;
 
--- Réservation marketplace depuis la marketplace ( (marketplace) :
--- autorisée seulement si le créneau est libre.
-create policy "Anyone can book a free free slot"
+-- Réservation publique : autorisée seulement sur un salon publié
+-- et si le créneau est libre (contrôle anti-conflit côté base).
+create policy "Anyone can book a free slot"
   on public.appointments for insert
   to anon, authenticated
   with check (
@@ -161,6 +171,11 @@ where a.ctid < b.ctid
   and a.status <> 'cancelled'
   and b.status <> 'cancelled';
 
-create unique index if not exists uniq_appointment_slot_unique
-  on public.appointments (salon_id, staff_name, date, time)
+create unique index if not exists uniq_appointment_slot
+  on public.appointments (
+    salon_id,
+    coalesce(staff_name, ''),
+    date,
+    time
+  )
   where status <> 'cancelled';

@@ -58,8 +58,11 @@ export function parseOpeningWindow(openingHours: string | undefined): [number, n
     parseTimeToMinutes("19:00")!,
   ];
   if (!openingHours) return FALLBACK;
-  const match = /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/.exec(openingHours);
-  if (!match) return FALLBACK;
+  // Dernier couple "HH:MM - HH:MM" de la chaîne : tolère les préfixes de jours
+  // ("Mar - Dim: 08:30 - 20:30") où le tiret relierait sinon deux horaires non bornes.
+  const matches = [...openingHours.matchAll(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g)];
+  if (matches.length === 0) return FALLBACK;
+  const match = matches[matches.length - 1];
   const open = parseTimeToMinutes(match[1]);
   const close = parseTimeToMinutes(match[2]);
   if (open === null || close === null || close <= open) return FALLBACK;
@@ -133,7 +136,7 @@ export function appointmentsForStaffOnDate(
  */
 export function isSlotAvailable(
   appointments: readonly Appointment[],
-  salon: Pick<Salon, "id">,
+  salon: Pick<Salon, "id" | "services">,
   staffName: string,
   date: string,
   time: string,
@@ -146,15 +149,18 @@ export function isSlotAvailable(
   return !existing.some((apt) => {
     const exStart = parseTimeToMinutes(apt.time);
     if (exStart === null) return false;
-    const exEnd = exStart + normalizeDuration(apt.servicePrice >= 0 ? aptDuration(apt, salon) : 0);
-    return intervalsOverlap(start, end, exStart, exEnd);
+    return intervalsOverlap(start, end, exStart, exStart + aptDuration(apt, salon));
   });
 }
 
-/** Durée estimée d'un rendez-vous existant (via le catalogue du salon si possible). */
+/**
+ * Durée estimée d'un rendez-vous existant (via le catalogue du salon si possible).
+ * À défaut, une réservation « Premier disponible » sans prestation reconnue occupe
+ * au minimum un pas de planification — jamais zéro (sinon le créneau ne bloquerait rien).
+ */
 function aptDuration(apt: Appointment, salon: Pick<Salon, "services"> & Partial<Salon>): number {
   const service = salon.services?.find((s) => s.id === apt.serviceId || s.name === apt.serviceName);
-  return service ? normalizeDuration(service.duration) : DEFAULT_SERVICE_DURATION_MINUTES;
+  return service ? Math.max(SLOT_INTERVAL_MINUTES, normalizeDuration(service.duration)) : SLOT_INTERVAL_MINUTES;
 }
 
 function normalizeDuration(duration: number | undefined): number {
@@ -179,7 +185,7 @@ export interface SlotInfo {
 
 /**
  * Génère la grille de créneaux pour un salon, une date, un staff et une
- * prestation donnés. Pure fonction : ne dépend que des données传入.
+ * prestation donnés. Pure fonction : ne dépend que des données passées en paramètre.
  */
 export function generateDaySlots(params: {
   salon: Salon;
@@ -216,11 +222,6 @@ export function generateDaySlots(params: {
     slots.push({ time: minutesToTime(start), available: !reason, reason });
   }
 
-  // Fermeture trop proche pour la prestation → aucun créneau possible.
-  if (slots.length === 0) return slots;
-
-  // Marquer les tout derniers créneaux comme « trop tardifs » si nécessaire :
-  // la boucle ci-dessus garantit déjà start + duration <= close, donc rien à faire.
   return slots;
 }
 
@@ -233,6 +234,57 @@ function isSameDay(now: Date, date: string): boolean {
 function minutesOfDay(now: Date): number {
   return now.getHours() * 60 + now.getMinutes();
 }
+
+/* ------------------------------------------------------------------ */
+/*  API haute niveau utilisée par l'UI de réservation                   */
+/* ------------------------------------------------------------------ */
+
+/** Créneaux réservables uniquement (grille filtrée sur `available`). */
+export function getAvailableSlots(params: Parameters<typeof generateDaySlots>[0]): string[] {
+  return generateDaySlots(params)
+    .filter((slot) => slot.available)
+    .map((slot) => slot.time);
+}
+
+/** Staff proposé dans le menu de réservation : chaque membre + option libre. */
+export interface BookingStaffOption {
+  name: string;
+  label: string;
+  /** Nombre de créneaux libres aujourd'hui (aide à la recommandation). */
+  freeToday: number;
+}
+
+/**
+ * Résout la liste de staff pour un salon : les membres réels triés par
+ * disponibilité décroissante du jour demandé, plus l'option virtuelle
+ * « Premier disponible » qui sélectionne automatiquement le membre ayant
+ * le plus de créneaux libres.
+ */
+export function buildStaffOptions(params: {
+  salon: Salon;
+  service: Pick<SalonService, "duration"> | undefined;
+  date: string;
+  appointments: readonly Appointment[];
+  now?: Date;
+}): { options: BookingStaffOption[]; firstAvailableName: string } {
+  const base = { ...params, staffName: "" };
+  const options: BookingStaffOption[] = [];
+
+  for (const member of params.salon.staff) {
+    const free = getAvailableSlots({ ...base, staffName: member.name }).length;
+    options.push({ name: member.name, label: `${member.name} — ${member.role}`, freeToday: free });
+  }
+  options.sort((a, b) => b.freeToday - a.freeToday);
+
+  const best = options[0];
+  return {
+    options,
+    firstAvailableName: best ? best.name : FIRST_AVAILABLE_LABEL,
+  };
+}
+
+/** Libellé de l'option virtuelle « premier barbier libre ». */
+export const FIRST_AVAILABLE_LABEL = "Premier disponible";
 
 /**
  * Résumé d'état d'une grille de créneaux — utilisé par l'UI pour les messages

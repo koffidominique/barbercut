@@ -30,6 +30,7 @@ import {
   subscriptionsStorage,
   teamInvitationsStorage,
 } from "@/lib/storage";
+import { isSlotAvailable } from "./slot-logic";
 import { useSupabaseSalonStore } from "./supabase-store";
 
 // Ré-exports pour compatibilité : les modules existants importent les types via `@/lib/store`.
@@ -298,6 +299,29 @@ function useLocalSalonStore() {
 
   // Prendre un rendez-vous (marketplace ou ERP)
   const bookAppointment = (data: Omit<Appointment, "id" | "createdAt">) => {
+    // Garde anti double réservation (miroir client de la contrainte RLS SQL) :
+    // un créneau [time, time+durée) qui chevauche un RDV actif du même barbier
+    // est refusé. Les salons sans staff nommé (files d'attente) sont exemptés.
+    if (data.staffName) {
+      const salonForCheck = salons.find((salon) => salon.id === data.salonId);
+      if (
+        salonForCheck &&
+        !isSlotAvailable(
+          appointments,
+          salonForCheck,
+          data.staffName,
+          data.date,
+          data.time,
+          salonForCheck.services.find(
+            (service) => service.id === data.serviceId || service.name === data.serviceName,
+          )?.duration ?? 0,
+        )
+      ) {
+        throw new Error(
+          "Ce créneau vient d'être réservé par un autre client. Merci d'en choisir un autre.",
+        );
+      }
+    }
     const newAppointment: Appointment = {
       ...data,
       id: "apt-" + Date.now(),
