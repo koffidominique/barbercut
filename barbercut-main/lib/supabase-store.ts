@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import type {
   Salon,
@@ -14,13 +14,83 @@ import type {
   SalonSubscription,
   TeamInvitation,
   OfflineAction,
+  SalonDraft,
 } from "@/lib/store";
+import { EMPTY_SALON, toCoordinate } from "@/lib/store";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const IS_CONFIGURED = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes("your-"),
 );
+
+/** Un identifiant déjà enregistré en base est un UUID ; sinon c'est un identifiant local. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isPersistedId = (id: string) => UUID_RE.test(id);
+
+const signature = (value: unknown) => JSON.stringify(value);
+
+/** Charge utile réellement stockée en base (sert aussi de signature anti-écriture inutile). */
+const servicePayload = (service: SalonService) => ({
+  name: service.name,
+  category: service.category,
+  price: service.price,
+  duration: service.duration,
+  description: service.description || "",
+  is_popular: service.isPopular ?? false,
+});
+
+const photoPayload = (photo: ShowcasePhoto) => ({
+  url: photo.url,
+  title: photo.title,
+  description: photo.description || "",
+  tags: photo.tags || [],
+  is_cover: photo.isCover ?? false,
+});
+
+const mapServiceRow = (row: any): SalonService => ({
+  id: row.id,
+  name: row.name,
+  category: (row.category || "Hommes") as SalonService["category"],
+  price: Number(row.price || 0),
+  duration: Number(row.duration || 0),
+  description: row.description || "",
+  isPopular: row.is_popular ?? false,
+});
+
+const mapStaffRow = (row: any): StaffMember => ({
+  id: row.id,
+  name: row.name,
+  role: row.role || "",
+  initials: row.initials || "",
+  color: row.color || "bg-[#202321]",
+  specialty: row.specialty || "",
+  phone: row.phone || "",
+  rating: Number(row.rating || 0),
+  reviewsCount: row.reviews_count || 0,
+  appointmentsCount: row.appointments_count || 0,
+  status: (row.status as StaffMember["status"]) || "active",
+  schedule: row.schedule || "",
+});
+
+const mapPhotoRow = (row: any): ShowcasePhoto => ({
+  id: row.id,
+  url: row.url,
+  title: row.title,
+  description: row.description || "",
+  tags: row.tags || [],
+  isCover: row.is_cover ?? false,
+});
+
+const groupBySalon = <T extends { salon_id: string }>(rows: T[] | null) => {
+  const grouped: Record<string, T[]> = {};
+  (rows || []).forEach((row) => {
+    if (!grouped[row.salon_id]) grouped[row.salon_id] = [];
+    grouped[row.salon_id].push(row);
+  });
+  return grouped;
+};
 
 /**
  * Store salon propulsé par Supabase.
@@ -35,7 +105,14 @@ export function useSupabaseSalonStore() {
   const [activeSalonId, setActiveSalonId] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const supabase = createBrowserClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+  // Un seul client par montage : une nouvelle instance à chaque rendu relançait
+  // l'effet de chargement en boucle (dépendance `supabase` instable).
+  const supabase = useMemo(
+    () => createBrowserClient(SUPABASE_URL!, SUPABASE_ANON_KEY!),
+    [],
+  );
+  /** Signatures des lignes déjà en base, pour ne pas réécrire des données inchangées. */
+  const signaturesRef = useRef<Record<string, string>>({});
 
   /* ------------------------------------------------------------------ */
   /*  Chargement initial                                                */
@@ -46,18 +123,74 @@ export function useSupabaseSalonStore() {
       return;
     }
 
-    let salonChannel: any;
-    let aptChannel: any;
-    let clientChannel: any;
+    let contentChannel: any;
 
     const loadData = async () => {
       try {
-        const { data: salonsData, error: salonsError } = await supabase
-          .from("salons")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const [
+          { data: salonsData, error: salonsError },
+          { data: aptsData },
+          { data: clientsData },
+          { data: servicesData },
+          { data: staffData },
+          { data: photosData },
+        ] = await Promise.all([
+          supabase
+            .from("salons")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("appointments")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("salon_clients")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("salon_services")
+            .select("*")
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("salon_staff")
+            .select("*")
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("showcase_photos")
+            .select("*")
+            .order("created_at", { ascending: true }),
+        ]);
 
-        if (!salonsError && salonsData) {
+        if (salonsError) {
+          console.error("Erreur chargement des salons", salonsError);
+        }
+
+        const servicesBySalon = groupBySalon(servicesData);
+        const staffBySalon = groupBySalon(staffData);
+        const photosBySalon = groupBySalon(photosData);
+
+        // Mémorise l'état réellement présent en base : les enregistrements
+        // suivants n'écriront que ce qui a changé.
+        const nextSignatures: Record<string, string> = {};
+        Object.values(servicesBySalon)
+          .flat()
+          .forEach((row) => {
+            const mapped = mapServiceRow(row);
+            nextSignatures[`service:${mapped.id}`] = signature(
+              servicePayload(mapped),
+            );
+          });
+        Object.values(photosBySalon)
+          .flat()
+          .forEach((row) => {
+            const mapped = mapPhotoRow(row);
+            nextSignatures[`photo:${mapped.id}`] = signature(
+              photoPayload(mapped),
+            );
+          });
+        signaturesRef.current = { ...signaturesRef.current, ...nextSignatures };
+
+        if (salonsData) {
           setSalons(
             salonsData.map((s) => ({
               id: s.id,
@@ -79,26 +212,15 @@ export function useSupabaseSalonStore() {
               smsRemindersEnabled: s.sms_reminders_enabled ?? true,
               whatsappConfirmationEnabled:
                 s.whatsapp_confirmation_enabled ?? true,
-              latitude:
-                s.latitude !== null && s.latitude !== undefined
-                  ? Number(s.latitude)
-                  : undefined,
-              longitude:
-                s.longitude !== null && s.longitude !== undefined
-                  ? Number(s.longitude)
-                  : undefined,
-              features: (s as any).features || [],
-              gallery: [],
-              services: [],
-              staff: [],
+              latitude: toCoordinate(s.latitude),
+              longitude: toCoordinate(s.longitude),
+              features: Array.isArray(s.features) ? s.features : [],
+              gallery: (photosBySalon[s.id] || []).map(mapPhotoRow),
+              services: (servicesBySalon[s.id] || []).map(mapServiceRow),
+              staff: (staffBySalon[s.id] || []).map(mapStaffRow),
             })),
           );
         }
-
-        const { data: aptsData } = await supabase
-          .from("appointments")
-          .select("*")
-          .order("created_at", { ascending: false });
 
         if (aptsData) {
           setAppointments(
@@ -124,11 +246,6 @@ export function useSupabaseSalonStore() {
             })),
           );
         }
-
-        const { data: clientsData } = await supabase
-          .from("salon_clients")
-          .select("*")
-          .order("created_at", { ascending: false });
 
         if (clientsData) {
           setClients(
@@ -166,72 +283,193 @@ export function useSupabaseSalonStore() {
 
     loadData();
 
-    /* --- Nettoyer les canaux existants avant d'en créer de nouveaux --- */
-    supabase.removeAllChannels();
-
-    /* --- Abonnements temps réel --- */
-    if (IS_CONFIGURED) {
-      // Créer le canal pour les salons
-      salonChannel = supabase.channel("salons-changes");
-      salonChannel.on(
+    /* --- Abonnements temps réel (un seul canal pour toutes les tables) --- */
+    contentChannel = supabase.channel("barbercuts-content-changes");
+    [
+      "salons",
+      "appointments",
+      "salon_clients",
+      "salon_services",
+      "salon_staff",
+      "showcase_photos",
+    ].forEach((table) => {
+      contentChannel.on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "salons" },
+        { event: "*", schema: "public", table },
         () => loadData(),
       );
-      salonChannel.subscribe();
-
-      // Créer le canal pour les rendez-vous
-      aptChannel = supabase.channel("appointments-changes");
-      aptChannel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "appointments" },
-        () => loadData(),
-      );
-      aptChannel.subscribe();
-
-      // Créer le canal pour les clients
-      clientChannel = supabase.channel("clients-changes");
-      clientChannel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "salon_clients" },
-        () => loadData(),
-      );
-      clientChannel.subscribe();
-    }
+    });
+    contentChannel.subscribe();
 
     return () => {
-      if (salonChannel) supabase.removeChannel(salonChannel);
-      if (aptChannel) supabase.removeChannel(aptChannel);
-      if (clientChannel) supabase.removeChannel(clientChannel);
+      if (contentChannel) supabase.removeChannel(contentChannel);
     };
   }, [supabase]);
 
   /* ------------------------------------------------------------------ */
   /*  Helpers                                                           */
   /* ------------------------------------------------------------------ */
-  const EMPTY_SALON: Salon = {
-    id: "",
-    name: "Barber Cuts",
-    tagline: "",
-    description: "",
-    city: "",
-    neighborhood: "",
-    address: "",
-    phone: "",
-    whatsapp: "",
-    rating: 0,
-    reviewsCount: 0,
-    isPublished: false,
-    coverImage: "",
-    openingHours: "",
-    features: [],
-    gallery: [],
-    services: [],
-    staff: [],
-  };
-
   const currentSalon =
     salons.find((s) => s.id === activeSalonId) || salons[0] || EMPTY_SALON;
+
+  /* ------------------------------------------------------------------ */
+  /*  Collections du salon (prestations, vitrine)                        */
+  /* ------------------------------------------------------------------ */
+  /**
+   * Aligne la table `salon_services` sur le tableau fourni par l'UI :
+   * mise à jour des lignes existantes, insertion des nouvelles,
+   * suppression des disparues. Les écritures inchangées sont ignorées
+   * grâce aux signatures chargées par `loadData`.
+   */
+  const syncSalonServices = useCallback(
+    async (salonId: string, services: SalonService[]) => {
+      if (!IS_CONFIGURED || !salonId) return;
+      try {
+        const { data: rows, error: readError } = await supabase
+          .from("salon_services")
+          .select("id, name")
+          .eq("salon_id", salonId);
+        if (readError) throw readError;
+
+        const stored = (rows || []) as { id: string; name: string }[];
+        const keptIds = new Set<string>();
+
+        for (const service of services) {
+          const payload = servicePayload(service);
+          const isStored =
+            isPersistedId(service.id) && stored.some((r) => r.id === service.id);
+
+          if (isStored) {
+            keptIds.add(service.id);
+            const key = `service:${service.id}`;
+            if (signaturesRef.current[key] === signature(payload)) continue;
+
+            const { error } = await supabase
+              .from("salon_services")
+              .update({ ...payload, updated_at: new Date().toISOString() })
+              .eq("id", service.id);
+            if (error) throw error;
+            signaturesRef.current[key] = signature(payload);
+            continue;
+          }
+
+          // Identifiant local : éviter de dupliquer une prestation déjà enregistrée
+          // avant le prochain rechargement temps réel.
+          const duplicate = stored.find((r) => r.name === service.name);
+          if (duplicate) {
+            keptIds.add(duplicate.id);
+            continue;
+          }
+
+          const { data: inserted, error } = await supabase
+            .from("salon_services")
+            .insert({ salon_id: salonId, ...payload })
+            .select("id")
+            .single();
+          if (error) throw error;
+          if (inserted?.id) {
+            keptIds.add(inserted.id);
+            signaturesRef.current[`service:${inserted.id}`] =
+              signature(payload);
+          }
+        }
+
+        // Garde-fou : un tableau vide signifie « pas encore chargé » (ou état
+        // initial), on ne supprime donc jamais toute la carte de prestations.
+        if (services.length === 0) return;
+
+        const removedIds = stored
+          .filter((r) => !keptIds.has(r.id))
+          .map((r) => r.id);
+        if (removedIds.length > 0) {
+          const { error } = await supabase
+            .from("salon_services")
+            .delete()
+            .in("id", removedIds);
+          if (error) throw error;
+          removedIds.forEach((id) => {
+            delete signaturesRef.current[`service:${id}`];
+          });
+        }
+      } catch (e) {
+        console.error("Erreur synchronisation des prestations", e);
+      }
+    },
+    [supabase],
+  );
+
+  /** Idem pour la galerie vitrine (`showcase_photos`). */
+  const syncSalonPhotos = useCallback(
+    async (salonId: string, photos: ShowcasePhoto[]) => {
+      if (!IS_CONFIGURED || !salonId) return;
+      try {
+        const { data: rows, error: readError } = await supabase
+          .from("showcase_photos")
+          .select("id, title")
+          .eq("salon_id", salonId);
+        if (readError) throw readError;
+
+        const stored = (rows || []) as { id: string; title: string }[];
+        const keptIds = new Set<string>();
+
+        for (const photo of photos) {
+          const payload = photoPayload(photo);
+          const isStored =
+            isPersistedId(photo.id) && stored.some((r) => r.id === photo.id);
+
+          if (isStored) {
+            keptIds.add(photo.id);
+            const key = `photo:${photo.id}`;
+            if (signaturesRef.current[key] === signature(payload)) continue;
+
+            const { error } = await supabase
+              .from("showcase_photos")
+              .update(payload)
+              .eq("id", photo.id);
+            if (error) throw error;
+            signaturesRef.current[key] = signature(payload);
+            continue;
+          }
+
+          const duplicate = stored.find((r) => r.title === photo.title);
+          if (duplicate) {
+            keptIds.add(duplicate.id);
+            continue;
+          }
+
+          const { data: inserted, error } = await supabase
+            .from("showcase_photos")
+            .insert({ salon_id: salonId, ...payload })
+            .select("id")
+            .single();
+          if (error) throw error;
+          if (inserted?.id) {
+            keptIds.add(inserted.id);
+            signaturesRef.current[`photo:${inserted.id}`] = signature(payload);
+          }
+        }
+
+        if (photos.length === 0) return;
+
+        const removedIds = stored
+          .filter((r) => !keptIds.has(r.id))
+          .map((r) => r.id);
+        if (removedIds.length > 0) {
+          const { error } = await supabase
+            .from("showcase_photos")
+            .delete()
+            .in("id", removedIds);
+          if (error) throw error;
+          removedIds.forEach((id) => {
+            delete signaturesRef.current[`photo:${id}`];
+          });
+        }
+      } catch (e) {
+        console.error("Erreur synchronisation de la vitrine", e);
+      }
+    },
+    [supabase],
+  );
 
   /* ------------------------------------------------------------------ */
   /*  Salons                                                            */
@@ -284,18 +522,27 @@ export function useSupabaseSalonStore() {
             .eq("id", updated.id);
 
           if (error) throw error;
+
+          // Les prestations et la vitrine vivent dans leurs propres tables :
+          // sans ces appels, les modifications étaient perdues au rechargement.
+          await syncSalonServices(updated.id, updated.services || []);
+          await syncSalonPhotos(updated.id, updated.gallery || []);
         } catch (e) {
           console.error("Erreur updateSalon", e);
         }
       })();
     },
-    [supabase, IS_CONFIGURED],
+    [supabase, syncSalonServices, syncSalonPhotos],
   );
 
   const createSalon = useCallback(
-    async (ownerId: string, data: Partial<Salon>) => {
+    async (ownerId: string, data: SalonDraft) => {
       if (!IS_CONFIGURED) return null;
       try {
+        // Les formulaires envoient des chaînes : on normalise une seule fois.
+        const latitude = toCoordinate(data.latitude);
+        const longitude = toCoordinate(data.longitude);
+
         const basePayload: any = {
           owner_id: ownerId,
           name: data.name || "Mon Salon Barber Cuts",
@@ -317,12 +564,8 @@ export function useSupabaseSalonStore() {
           whatsapp_confirmation_enabled: true,
         };
 
-        if (data.latitude !== undefined && data.latitude !== null && data.latitude !== "") {
-          basePayload.latitude = Number(data.latitude);
-        }
-        if (data.longitude !== undefined && data.longitude !== null && data.longitude !== "") {
-          basePayload.longitude = Number(data.longitude);
-        }
+        if (latitude !== undefined) basePayload.latitude = latitude;
+        if (longitude !== undefined) basePayload.longitude = longitude;
 
         let newSalon: any = null;
         let error: any = null;
@@ -374,30 +617,21 @@ export function useSupabaseSalonStore() {
           smsRemindersEnabled: newSalon.sms_reminders_enabled ?? true,
           whatsappConfirmationEnabled:
             newSalon.whatsapp_confirmation_enabled ?? true,
-          latitude:
-            newSalon.latitude !== null && newSalon.latitude !== undefined
-              ? Number(newSalon.latitude)
-              : data.latitude !== undefined && data.latitude !== null && data.latitude !== ""
-                ? Number(data.latitude)
-                : undefined,
-          longitude:
-            newSalon.longitude !== null && newSalon.longitude !== undefined
-              ? Number(newSalon.longitude)
-              : data.longitude !== undefined && data.longitude !== null && data.longitude !== ""
-                ? Number(data.longitude)
-                : undefined,
+          latitude: toCoordinate(newSalon.latitude) ?? latitude,
+          longitude: toCoordinate(newSalon.longitude) ?? longitude,
           features: [],
           gallery: [],
           // Utiliser les services fournis dans data ou tableau vide
           services:
             data.services && data.services.length > 0
-              ? data.services.map((s, i) => ({
+              ? data.services.map((service, i) => ({
                   id: `srv-${Date.now()}-${i}`,
-                  name: s.name,
-                  category: "Hommes" as const,
-                  price: Number(s.price) || 0,
-                  duration: Number(s.duration) || 45,
-                  description: "",
+                  name: service.name,
+                  category: service.category || ("Hommes" as const),
+                  price: Number(service.price) || 0,
+                  duration: Number(service.duration) || 45,
+                  description: service.description || "",
+                  isPopular: service.isPopular,
                 }))
               : [],
           staff: [],
@@ -407,13 +641,29 @@ export function useSupabaseSalonStore() {
         setActiveSalonId(salon.id);
         localStorage.setItem("barbercuts_active_salon_id_v1", salon.id);
 
+        // Les prestations saisies pendant l'onboarding sont écrites dans
+        // `salon_services` : sans cela elles disparaissaient au rechargement.
+        if (salon.services.length > 0) {
+          const { error: servicesError } = await supabase
+            .from("salon_services")
+            .insert(
+              salon.services.map((service) => ({
+                salon_id: salon.id,
+                ...servicePayload(service),
+              })),
+            );
+          if (servicesError) {
+            console.error("Erreur création des prestations", servicesError);
+          }
+        }
+
         return salon;
       } catch (e: any) {
         console.error("Erreur createSalon", e?.message || e, e);
         return null;
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   /* ------------------------------------------------------------------ */
@@ -455,7 +705,7 @@ export function useSupabaseSalonStore() {
 
       return apt;
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   const updateAppointmentStatus = useCallback(
@@ -472,7 +722,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur updateAppointmentStatus", e);
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   const updateAppointmentPayment = useCallback(
@@ -497,7 +747,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur updateAppointmentPayment", e);
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   const deleteAppointment = useCallback(
@@ -513,7 +763,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur deleteAppointment", e);
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   /* ------------------------------------------------------------------ */
@@ -525,10 +775,16 @@ export function useSupabaseSalonStore() {
       try {
         if (client.id.startsWith("cli-")) {
           // Nouveau client
+          if (!currentSalon?.id) {
+            console.error(
+              "saveClient: aucun salon actif, le client ne peut pas être rattaché",
+            );
+            return;
+          }
           const { data: newClient, error } = await supabase
             .from("salon_clients")
             .insert({
-              salon_id: currentSalon?.id || "",
+              salon_id: currentSalon.id,
               name: client.name,
               phone: client.phone,
               email: client.email || null,
@@ -590,7 +846,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur saveClient", e);
       }
     },
-    [supabase, IS_CONFIGURED, currentSalon?.id],
+    [supabase, currentSalon],
   );
 
   const deleteClient = useCallback(
@@ -606,7 +862,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur deleteClient", e);
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   /* ------------------------------------------------------------------ */
@@ -656,7 +912,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur saveStaffMember", e);
       }
     },
-    [supabase, IS_CONFIGURED, currentSalon],
+    [supabase, currentSalon],
   );
 
   const deleteStaffMember = useCallback(
@@ -672,7 +928,7 @@ export function useSupabaseSalonStore() {
         console.error("Erreur deleteStaffMember", e);
       }
     },
-    [supabase, IS_CONFIGURED],
+    [supabase],
   );
 
   /* ------------------------------------------------------------------ */
@@ -701,7 +957,7 @@ export function useSupabaseSalonStore() {
         .eq("salon_id", activeSalonId);
     }
     window.location.reload();
-  }, [supabase, IS_CONFIGURED, activeSalonId]);
+  }, [supabase, activeSalonId]);
 
   return {
     salons,

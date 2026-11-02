@@ -167,7 +167,7 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 #### 3.4 Vitrine salon (côté gérant)
 - [ ] Planification de publication (programmer une photo pour une date future)
 - [ ] Statistiques de la vitrine : vues, clics, réservations générées
-- <|open|>argument key="text" type="string"<|sep|>Bouton "Partager sur WhatsApp/Facebook" pour chaque annonce
+- [ ] Bouton "Partager sur WhatsApp/Facebook" pour chaque annonce
 
 #### 3.5 Critères d'acceptation Phase 3
 - Un client peut chercher un salon, filtrer, et réserver en < 2 minutes
@@ -188,7 +188,7 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 
 #### 4.2 Analytics avancés
 - [x] Tableau de bord analytique : CA par jour/semaine/mois, prévisions
-- <|open|>argument key="text" type="string"<|sep|>Comparatif période N vs période N-1
+- [x] Comparatif période N vs période N-1
 - [x] Top prestations les plus rentables
 - [x] Taux de no-show (RDV non honorés) par collaborateur
 - [x] Churn client (clients qui ne reviennent pas)

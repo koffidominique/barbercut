@@ -81,6 +81,69 @@ export interface Salon {
   logo?: string;
 }
 
+/** Valeur brute acceptée pour une coordonnée GPS (formulaire, base, code). */
+export type CoordinateInput = number | string | null | undefined;
+
+/**
+ * Normalise une coordonnée venant d'un formulaire ou de la base.
+ * Retourne `undefined` si la valeur est vide ou non numérique.
+ */
+export function toCoordinate(value: CoordinateInput): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Brouillon de salon accepté par `createSalon`.
+ * Les formulaires manipulent des champs texte : on autorise donc des
+ * coordonnées en `string` et des prestations partielles.
+ */
+export type SalonDraft = Omit<
+  Partial<Salon>,
+  "latitude" | "longitude" | "services" | "staff" | "gallery"
+> & {
+  latitude?: CoordinateInput;
+  longitude?: CoordinateInput;
+  services?: Array<
+    Partial<Omit<SalonService, "price" | "duration">> & {
+      name: string;
+      /** Les formulaires saisissent des chaînes : normalisées à l'enregistrement. */
+      price?: number | string;
+      duration?: number | string;
+    }
+  >;
+};
+
+/**
+ * Salon neutre renvoyé quand aucun salon n'est encore chargé.
+ * Évite les `undefined` pendant le rendu serveur et les états vides.
+ */
+export const EMPTY_SALON: Salon = {
+  id: "",
+  name: "Barber Cuts",
+  tagline: "",
+  description: "",
+  city: "",
+  neighborhood: "",
+  address: "",
+  phone: "",
+  whatsapp: "",
+  rating: 0,
+  reviewsCount: 0,
+  isPublished: false,
+  coverImage: "",
+  openingHours: "",
+  features: [],
+  gallery: [],
+  services: [],
+  staff: [],
+};
+
 export type StaffRole = "admin" | "coiffeur" | "receptionniste";
 
 export interface StaffPermissions {
@@ -420,12 +483,12 @@ const IS_SUPABASE_CONFIGURED = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes("your-"),
 );
 
-export function useSalonStore() {
-  // Si Supabase est configuré, déléguer au store cloud
-  if (IS_SUPABASE_CONFIGURED) {
-    return useSupabaseSalonStore();
-  }
-
+/**
+ * Implémentation localStorage du store (mode hors-ligne / sans Supabase).
+ * Non exportée directement : `useSalonStore` choisit l'implémentation au
+ * niveau du module pour ne pas appeler de hooks de façon conditionnelle.
+ */
+function useLocalSalonStore() {
   const [salons, setSalons] = useState<Salon[]>(DEFAULT_SALONS);
   const [appointments, setAppointments] =
     useState<Appointment[]>(DEFAULT_APPOINTMENTS);
@@ -530,7 +593,8 @@ export function useSalonStore() {
     saveStoredOfflineQueue(remaining);
   };
 
-  const currentSalon = salons.find((s) => s.id === activeSalonId) || salons[0];
+  const currentSalon =
+    salons.find((s) => s.id === activeSalonId) || salons[0] || EMPTY_SALON;
 
   // Update active salon
   const updateSalon = (updated: Salon) => {
@@ -931,8 +995,10 @@ export function useSalonStore() {
   // Create a new salon (localStorage fallback)
   const createSalon = async (
     ownerId: string,
-    data: Partial<Salon>,
+    data: SalonDraft,
   ): Promise<Salon | null> => {
+    // `ownerId` n'est pas utilisé en mode localStorage (pas de multi-comptes)
+    void ownerId;
     const newSalon: Salon = {
       id: "salon-" + Date.now(),
       name: data.name || "Mon Salon Barber Cuts",
@@ -952,8 +1018,8 @@ export function useSalonStore() {
       currency: "FCFA",
       smsRemindersEnabled: true,
       whatsappConfirmationEnabled: true,
-      latitude: data.latitude ? Number(data.latitude) : undefined,
-      longitude: data.longitude ? Number(data.longitude) : undefined,
+      latitude: toCoordinate(data.latitude),
+      longitude: toCoordinate(data.longitude),
       features: [],
       gallery: [],
       // Utiliser les services fournis dans data ou le service par défaut si aucun n'est fourni
@@ -1030,3 +1096,13 @@ export function useSalonStore() {
     resetDefaults,
   };
 }
+
+/**
+ * Store unique de l'application.
+ * Supabase si les variables d'environnement sont fournies, sinon localStorage.
+ * L'aiguillage est fait ici (et non dans le corps du hook) afin de respecter
+ * les règles des Hooks.
+ */
+export const useSalonStore = IS_SUPABASE_CONFIGURED
+  ? useSupabaseSalonStore
+  : useLocalSalonStore;

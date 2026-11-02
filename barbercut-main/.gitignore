@@ -1,16 +1,17 @@
-# v0 sandbox internal files
-__v0_runtime_loader.js
-__v0_devtools.tsx
-__v0_jsx-dev-runtime.ts
-.snowflake/
-.design-cache/
-.v0-trash/
-.vercel/
+# Variables d'environnement (ne jamais committer de secrets)
+.env
+.env.*
+!.env.example
 
-# Environment variables
-.env*.local
-
-# Common ignores
+# Dépendances & artefacts de build
 node_modules
 .next/
-.DS_Store.env
+out/
+*.tsbuildinfo
+.eslintcache
+
+# État local de la CLI Supabase
+supabase/.temp/
+
+# Système
+.DS_Store

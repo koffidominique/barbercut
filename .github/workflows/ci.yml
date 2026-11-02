@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Annule les exécutions obsolètes quand on repousse sur la même réf.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # L'application Next.js vit dans le sous-dossier barbercut-main.
+    working-directory: barbercut-main
+
+jobs:
+  quality:
+    name: Types · Lint · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: barbercut-main/package-lock.json
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Vérification TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build de production
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Audit des dépendances (informatif)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

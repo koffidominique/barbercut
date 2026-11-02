@@ -122,6 +122,11 @@ export function BookingModal({
       return
     }
 
+    if (!activeService) {
+      setErrorMsg('Ce salon n’a pas encore publié de prestation. Réessayez plus tard.')
+      return
+    }
+
     setSubmitting(true)
 
     const newApt: Omit<Appointment, 'id' | 'createdAt'> = {
@@ -690,7 +695,7 @@ export function BookingModal({
                     <span className="block text-xs font-bold text-[#202321]">Récapitulatif</span>
                     <div className="flex justify-between border-b border-[#f1eee8] pb-2">
                       <span className="text-[#8c9089]">Prestation</span>
-                      <span className="font-semibold text-[#202321]">{activeService.name}</span>
+                      <span className="font-semibold text-[#202321]">{activeService?.name ?? '—'}</span>
                     </div>
                     <div className="flex justify-between border-b border-[#f1eee8] pb-2">
                       <span className="text-[#8c9089]">Coiffeur</span>
@@ -705,7 +710,7 @@ export function BookingModal({
                     <div className="flex justify-between pt-1 text-sm font-bold text-[#202321]">
                       <span>Total à régler sur place</span>
                       <span className="text-[#d47b59]">
-                        {activeService.price.toLocaleString('fr-FR')} FCFA
+                        {(activeService?.price ?? 0).toLocaleString('fr-FR')} FCFA
                       </span>
                     </div>
                   </div>

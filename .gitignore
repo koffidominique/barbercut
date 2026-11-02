@@ -1,0 +1,26 @@
+# Dépendances
+node_modules/
+
+# Build Next.js
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+.eslintcache
+
+# Variables d'environnement (ne jamais committer de secrets)
+.env
+.env.*
+!.env.example
+
+# État local de la CLI Supabase
+supabase/.temp/
+
+# Système / éditeurs
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+!**/.vscode/extensions.json

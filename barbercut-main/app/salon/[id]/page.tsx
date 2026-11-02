@@ -1,22 +1,25 @@
 import { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import ClientSalonPage from './ClientSalonPage'
 
 interface SalonPageProps {
-  params: { id: string }
+  /** Next 15+ : `params` est asynchrone. */
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({ params }: SalonPageProps): Promise<Metadata> {
+  const { id } = await params
+
   return {
     title: 'Salon — Barber Cuts Marketplace',
     description: 'Découvrez ce salon de coiffure sur la Marketplace Barber Cuts. Prestations, tarifs et réservation en ligne.',
     alternates: {
-      canonical: `/salon/${params.id}`,
+      canonical: `/salon/${id}`,
     },
   }
 }
 
 export default async function SalonPage({ params }: SalonPageProps) {
+  const { id } = await params
   // Le salon est vérifié côté client via useSalonStore ; notFound() est géré dans ClientSalonPage
-  return <ClientSalonPage salonId={params.id} />
+  return <ClientSalonPage salonId={id} />
 }
