@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -186,7 +187,7 @@ export function ERPServicesView({ salon, onUpdateSalon }: ERPServicesViewProps) 
         <div className="rounded-2xl border border-[#e9e6df] bg-white p-4">
           <span className="text-[11px] text-[#92958f]">Tarif moyen prestation</span>
           <div className="mt-1 font-serif text-2xl font-bold text-[#bd664a]">
-            {avgPrice.toLocaleString('fr-FR')} FCFA
+            {formatPrice(avgPrice, salon)}
           </div>
           <p className="mt-1 text-[10px] text-[#92958f]">Toutes catégories confondues</p>
         </div>
@@ -269,7 +270,7 @@ export function ERPServicesView({ salon, onUpdateSalon }: ERPServicesViewProps) 
                   </div>
                   <div className="text-right">
                     <div className="font-serif text-base font-bold text-[#202321]">
-                      {srv.price.toLocaleString('fr-FR')} F
+                      {formatPrice(srv.price, salon)}
                     </div>
                     <div className="text-[10px] text-[#8c9089]">{srv.duration} min</div>
                   </div>

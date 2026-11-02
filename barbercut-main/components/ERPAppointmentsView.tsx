@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -273,7 +274,7 @@ export function ERPAppointmentsView({
                     <span>Coiffeur : <strong>{apt.staffName}</strong></span>
                     <span>·</span>
                     <span className="font-serif font-bold text-[#bd664a]">
-                      {apt.servicePrice.toLocaleString('fr-FR')} FCFA
+                      {formatPrice(apt.servicePrice, salon)}
                     </span>
                   </div>
 
@@ -426,7 +427,7 @@ export function ERPAppointmentsView({
                   >
                     {salon.services.map((srv) => (
                       <option key={srv.id} value={srv.id}>
-                        {srv.name} ({srv.price.toLocaleString('fr-FR')} F)
+                        {srv.name} ({formatPrice(srv.price, salon)})
                       </option>
                     ))}
                   </select>

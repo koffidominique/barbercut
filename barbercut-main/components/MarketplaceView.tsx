@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -492,7 +493,7 @@ export function MarketplaceView({
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-serif text-xs font-bold text-[#bd664a]">
-                                {srv.price.toLocaleString('fr-FR')} F
+                                {formatPrice(srv.price, salon)}
                               </span>
                               <button
                                 onClick={() => handleOpenBooking(salon, srv)}

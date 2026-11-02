@@ -1,482 +1,80 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { useCallback } from "react";
 import type {
-  Salon,
   Appointment,
-  SalonClient,
-  StaffMember,
-  SalonService,
-  ShowcasePhoto,
-  SalonReview,
   ClientAccount,
-  SalonSubscription,
-  TeamInvitation,
   OfflineAction,
+  Salon,
+  SalonClient,
   SalonDraft,
-} from "@/lib/store";
-import { EMPTY_SALON, toCoordinate } from "@/lib/store";
+  SalonReview,
+  SalonSubscription,
+  StaffMember,
+  TeamInvitation,
+} from "@/lib/types";
+import { EMPTY_SALON, toCoordinate } from "@/lib/types";
+import { IS_CONFIGURED, unwrap } from "@/lib/supabase-client";
+import {
+  appointmentInsertPayload,
+  clientColumnsPayload,
+  mapClientRow,
+  mapSalonRow,
+  reviewInsertPayload,
+  salonUpdatePayload,
+  servicePayload,
+  staffColumnsPayload,
+  subscriptionUpsertPayload,
+  teamInvitationInsertPayload,
+} from "@/lib/supabase-mappers";
+import { useSalonData } from "@/lib/use-salon-data";
+import { syncSalonPhotos, syncSalonServices } from "@/lib/supabase-sync";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const IS_CONFIGURED = Boolean(
-  SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes("your-"),
-);
+/** Note affichée par défaut pour un membre d'équipe sans historique. */
+const DEFAULT_STAFF_RATING = 4.9;
 
-/** Un identifiant déjà enregistré en base est un UUID ; sinon c'est un identifiant local. */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isPersistedId = (id: string) => UUID_RE.test(id);
+/** Prix de l'abonnement Pro (FCFA / mois) — miroir du store local. */
+const PRO_PRICE_FCFA = 35000;
+/** Durée de l'essai gratuit (jours) — miroir du store local. */
+const TRIAL_DAYS = 14;
 
-const signature = (value: unknown) => JSON.stringify(value);
-
-/** Charge utile réellement stockée en base (sert aussi de signature anti-écriture inutile). */
-const servicePayload = (service: SalonService) => ({
-  name: service.name,
-  category: service.category,
-  price: service.price,
-  duration: service.duration,
-  description: service.description || "",
-  is_popular: service.isPopular ?? false,
-});
-
-const photoPayload = (photo: ShowcasePhoto) => ({
-  url: photo.url,
-  title: photo.title,
-  description: photo.description || "",
-  tags: photo.tags || [],
-  is_cover: photo.isCover ?? false,
-});
-
-const mapServiceRow = (row: any): SalonService => ({
-  id: row.id,
-  name: row.name,
-  category: (row.category || "Hommes") as SalonService["category"],
-  price: Number(row.price || 0),
-  duration: Number(row.duration || 0),
-  description: row.description || "",
-  isPopular: row.is_popular ?? false,
-});
-
-const mapStaffRow = (row: any): StaffMember => ({
-  id: row.id,
-  name: row.name,
-  role: row.role || "",
-  initials: row.initials || "",
-  color: row.color || "bg-[#202321]",
-  specialty: row.specialty || "",
-  phone: row.phone || "",
-  rating: Number(row.rating || 0),
-  reviewsCount: row.reviews_count || 0,
-  appointmentsCount: row.appointments_count || 0,
-  status: (row.status as StaffMember["status"]) || "active",
-  schedule: row.schedule || "",
-});
-
-const mapPhotoRow = (row: any): ShowcasePhoto => ({
-  id: row.id,
-  url: row.url,
-  title: row.title,
-  description: row.description || "",
-  tags: row.tags || [],
-  isCover: row.is_cover ?? false,
-});
-
-const groupBySalon = <T extends { salon_id: string }>(rows: T[] | null) => {
-  const grouped: Record<string, T[]> = {};
-  (rows || []).forEach((row) => {
-    if (!grouped[row.salon_id]) grouped[row.salon_id] = [];
-    grouped[row.salon_id].push(row);
-  });
-  return grouped;
+/** Intitulés des rôles d'équipe (miroir du store local). */
+const ROLE_LABELS: Record<TeamInvitation["role"], string> = {
+  admin: "Gérant / Admin",
+  coiffeur: "Coiffeur / Barbier",
+  receptionniste: "Réceptionniste",
 };
+
+/** Colonnes communes à l'insertion d'un salon dans la table `salons`. */
+const SALON_INSERT_DEFAULTS = {
+  rating: 0,
+  reviews_count: 0,
+  is_published: false,
+  currency: "FCFA",
+  sms_reminders_enabled: true,
+  whatsapp_confirmation_enabled: true,
+} as const;
 
 /**
  * Store salon propulsé par Supabase.
  * Même interface que useSalonStore (lib/store.ts) pour une migration transparente.
- * Si Supabase n'est pas configuré, toutes les opérations retournent des tableaux vides
- * et l'application continue de fonctionner en mode dégradé (localStorage dans lib/store.ts).
+ * La lecture et le temps réel vivent dans `use-salon-data.ts`, l'alignement des
+ * collections enfants dans `supabase-sync.ts`, les conversions snake/camel dans
+ * `supabase-mappers.ts`. Ce fichier ne contient que les opérations d'écriture.
  */
 export function useSupabaseSalonStore() {
-  const [salons, setSalons] = useState<Salon[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [clients, setClients] = useState<SalonClient[]>([]);
-  const [activeSalonId, setActiveSalonId] = useState<string>("");
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // Un seul client par montage : une nouvelle instance à chaque rendu relançait
-  // l'effet de chargement en boucle (dépendance `supabase` instable).
-  const supabase = useMemo(
-    () => createBrowserClient(SUPABASE_URL!, SUPABASE_ANON_KEY!),
-    [],
-  );
-  /** Signatures des lignes déjà en base, pour ne pas réécrire des données inchangées. */
-  const signaturesRef = useRef<Record<string, string>>({});
-
-  /* ------------------------------------------------------------------ */
-  /*  Chargement initial                                                */
-  /* ------------------------------------------------------------------ */
-  useEffect(() => {
-    if (!IS_CONFIGURED) {
-      setIsLoaded(true);
-      return;
-    }
-
-    let contentChannel: any;
-
-    const loadData = async () => {
-      try {
-        const [
-          { data: salonsData, error: salonsError },
-          { data: aptsData },
-          { data: clientsData },
-          { data: servicesData },
-          { data: staffData },
-          { data: photosData },
-        ] = await Promise.all([
-          supabase
-            .from("salons")
-            .select("*")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("appointments")
-            .select("*")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("salon_clients")
-            .select("*")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("salon_services")
-            .select("*")
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("salon_staff")
-            .select("*")
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("showcase_photos")
-            .select("*")
-            .order("created_at", { ascending: true }),
-        ]);
-
-        if (salonsError) {
-          console.error("Erreur chargement des salons", salonsError);
-        }
-
-        const servicesBySalon = groupBySalon(servicesData);
-        const staffBySalon = groupBySalon(staffData);
-        const photosBySalon = groupBySalon(photosData);
-
-        // Mémorise l'état réellement présent en base : les enregistrements
-        // suivants n'écriront que ce qui a changé.
-        const nextSignatures: Record<string, string> = {};
-        Object.values(servicesBySalon)
-          .flat()
-          .forEach((row) => {
-            const mapped = mapServiceRow(row);
-            nextSignatures[`service:${mapped.id}`] = signature(
-              servicePayload(mapped),
-            );
-          });
-        Object.values(photosBySalon)
-          .flat()
-          .forEach((row) => {
-            const mapped = mapPhotoRow(row);
-            nextSignatures[`photo:${mapped.id}`] = signature(
-              photoPayload(mapped),
-            );
-          });
-        signaturesRef.current = { ...signaturesRef.current, ...nextSignatures };
-
-        if (salonsData) {
-          setSalons(
-            salonsData.map((s) => ({
-              id: s.id,
-              name: s.name,
-              tagline: s.tagline || "",
-              description: s.description || "",
-              city: s.city || "",
-              neighborhood: s.neighborhood || "",
-              address: s.address || "",
-              phone: s.phone || "",
-              whatsapp: s.whatsapp || "",
-              rating: Number(s.rating || 0),
-              reviewsCount: s.reviews_count || 0,
-              isPublished: s.is_published ?? false,
-              coverImage: s.cover_image || "",
-              openingHours: s.opening_hours || "",
-              rccm: s.rccm || undefined,
-              currency: s.currency || "FCFA",
-              smsRemindersEnabled: s.sms_reminders_enabled ?? true,
-              whatsappConfirmationEnabled:
-                s.whatsapp_confirmation_enabled ?? true,
-              latitude: toCoordinate(s.latitude),
-              longitude: toCoordinate(s.longitude),
-              features: Array.isArray(s.features) ? s.features : [],
-              gallery: (photosBySalon[s.id] || []).map(mapPhotoRow),
-              services: (servicesBySalon[s.id] || []).map(mapServiceRow),
-              staff: (staffBySalon[s.id] || []).map(mapStaffRow),
-            })),
-          );
-        }
-
-        if (aptsData) {
-          setAppointments(
-            aptsData.map((a) => ({
-              id: a.id,
-              salonId: a.salon_id,
-              clientName: a.client_name,
-              clientPhone: a.client_phone,
-              serviceId: a.service_id || "",
-              serviceName: a.service_name,
-              servicePrice: a.service_price || 0,
-              staffName: a.staff_name || "",
-              date: a.date,
-              time: a.time,
-              status: a.status as Appointment["status"],
-              source: a.source as Appointment["source"],
-              notes: a.notes || undefined,
-              createdAt: a.created_at,
-              paymentStatus:
-                (a.payment_status as Appointment["paymentStatus"]) || "unpaid",
-              paymentMethod:
-                (a.payment_method as Appointment["paymentMethod"]) || undefined,
-            })),
-          );
-        }
-
-        if (clientsData) {
-          setClients(
-            clientsData.map((c) => ({
-              id: c.id,
-              name: c.name,
-              phone: c.phone,
-              email: c.email || undefined,
-              favoriteService: c.favorite_service || "",
-              preferredStaff: c.preferred_staff || "",
-              totalVisits: c.total_visits || 0,
-              totalSpent: c.total_spent || 0,
-              lastVisit: c.last_visit || "",
-              nextAppointment: c.next_appointment || undefined,
-              status: c.status as SalonClient["status"],
-              source: c.source as SalonClient["source"],
-              notes: c.notes || undefined,
-            })),
-          );
-        }
-
-        // Définir le salon actif (le premier ou celui stocké précédemment)
-        if (salonsData && salonsData.length > 0) {
-          const stored = localStorage.getItem("barbercuts_active_salon_id_v1");
-          const found = salonsData.find((s) => s.id === stored);
-          setActiveSalonId(found ? found.id : salonsData[0].id);
-        }
-
-        setIsLoaded(true);
-      } catch (e) {
-        console.error("Erreur chargement Supabase", e);
-        setIsLoaded(true);
-      }
-    };
-
-    loadData();
-
-    /* --- Abonnements temps réel (un seul canal pour toutes les tables) --- */
-    contentChannel = supabase.channel("barbercuts-content-changes");
-    [
-      "salons",
-      "appointments",
-      "salon_clients",
-      "salon_services",
-      "salon_staff",
-      "showcase_photos",
-    ].forEach((table) => {
-      contentChannel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => loadData(),
-      );
-    });
-    contentChannel.subscribe();
-
-    return () => {
-      if (contentChannel) supabase.removeChannel(contentChannel);
-    };
-  }, [supabase]);
-
-  /* ------------------------------------------------------------------ */
-  /*  Helpers                                                           */
-  /* ------------------------------------------------------------------ */
-  const currentSalon =
-    salons.find((s) => s.id === activeSalonId) || salons[0] || EMPTY_SALON;
-
-  /* ------------------------------------------------------------------ */
-  /*  Collections du salon (prestations, vitrine)                        */
-  /* ------------------------------------------------------------------ */
-  /**
-   * Aligne la table `salon_services` sur le tableau fourni par l'UI :
-   * mise à jour des lignes existantes, insertion des nouvelles,
-   * suppression des disparues. Les écritures inchangées sont ignorées
-   * grâce aux signatures chargées par `loadData`.
-   */
-  const syncSalonServices = useCallback(
-    async (salonId: string, services: SalonService[]) => {
-      if (!IS_CONFIGURED || !salonId) return;
-      try {
-        const { data: rows, error: readError } = await supabase
-          .from("salon_services")
-          .select("id, name")
-          .eq("salon_id", salonId);
-        if (readError) throw readError;
-
-        const stored = (rows || []) as { id: string; name: string }[];
-        const keptIds = new Set<string>();
-
-        for (const service of services) {
-          const payload = servicePayload(service);
-          const isStored =
-            isPersistedId(service.id) && stored.some((r) => r.id === service.id);
-
-          if (isStored) {
-            keptIds.add(service.id);
-            const key = `service:${service.id}`;
-            if (signaturesRef.current[key] === signature(payload)) continue;
-
-            const { error } = await supabase
-              .from("salon_services")
-              .update({ ...payload, updated_at: new Date().toISOString() })
-              .eq("id", service.id);
-            if (error) throw error;
-            signaturesRef.current[key] = signature(payload);
-            continue;
-          }
-
-          // Identifiant local : éviter de dupliquer une prestation déjà enregistrée
-          // avant le prochain rechargement temps réel.
-          const duplicate = stored.find((r) => r.name === service.name);
-          if (duplicate) {
-            keptIds.add(duplicate.id);
-            continue;
-          }
-
-          const { data: inserted, error } = await supabase
-            .from("salon_services")
-            .insert({ salon_id: salonId, ...payload })
-            .select("id")
-            .single();
-          if (error) throw error;
-          if (inserted?.id) {
-            keptIds.add(inserted.id);
-            signaturesRef.current[`service:${inserted.id}`] =
-              signature(payload);
-          }
-        }
-
-        // Garde-fou : un tableau vide signifie « pas encore chargé » (ou état
-        // initial), on ne supprime donc jamais toute la carte de prestations.
-        if (services.length === 0) return;
-
-        const removedIds = stored
-          .filter((r) => !keptIds.has(r.id))
-          .map((r) => r.id);
-        if (removedIds.length > 0) {
-          const { error } = await supabase
-            .from("salon_services")
-            .delete()
-            .in("id", removedIds);
-          if (error) throw error;
-          removedIds.forEach((id) => {
-            delete signaturesRef.current[`service:${id}`];
-          });
-        }
-      } catch (e) {
-        console.error("Erreur synchronisation des prestations", e);
-      }
-    },
-    [supabase],
-  );
-
-  /** Idem pour la galerie vitrine (`showcase_photos`). */
-  const syncSalonPhotos = useCallback(
-    async (salonId: string, photos: ShowcasePhoto[]) => {
-      if (!IS_CONFIGURED || !salonId) return;
-      try {
-        const { data: rows, error: readError } = await supabase
-          .from("showcase_photos")
-          .select("id, title")
-          .eq("salon_id", salonId);
-        if (readError) throw readError;
-
-        const stored = (rows || []) as { id: string; title: string }[];
-        const keptIds = new Set<string>();
-
-        for (const photo of photos) {
-          const payload = photoPayload(photo);
-          const isStored =
-            isPersistedId(photo.id) && stored.some((r) => r.id === photo.id);
-
-          if (isStored) {
-            keptIds.add(photo.id);
-            const key = `photo:${photo.id}`;
-            if (signaturesRef.current[key] === signature(payload)) continue;
-
-            const { error } = await supabase
-              .from("showcase_photos")
-              .update(payload)
-              .eq("id", photo.id);
-            if (error) throw error;
-            signaturesRef.current[key] = signature(payload);
-            continue;
-          }
-
-          const duplicate = stored.find((r) => r.title === photo.title);
-          if (duplicate) {
-            keptIds.add(duplicate.id);
-            continue;
-          }
-
-          const { data: inserted, error } = await supabase
-            .from("showcase_photos")
-            .insert({ salon_id: salonId, ...payload })
-            .select("id")
-            .single();
-          if (error) throw error;
-          if (inserted?.id) {
-            keptIds.add(inserted.id);
-            signaturesRef.current[`photo:${inserted.id}`] = signature(payload);
-          }
-        }
-
-        if (photos.length === 0) return;
-
-        const removedIds = stored
-          .filter((r) => !keptIds.has(r.id))
-          .map((r) => r.id);
-        if (removedIds.length > 0) {
-          const { error } = await supabase
-            .from("showcase_photos")
-            .delete()
-            .in("id", removedIds);
-          if (error) throw error;
-          removedIds.forEach((id) => {
-            delete signaturesRef.current[`photo:${id}`];
-          });
-        }
-      } catch (e) {
-        console.error("Erreur synchronisation de la vitrine", e);
-      }
-    },
-    [supabase],
-  );
+  const data = useSalonData();
+  const { supabase, salons, clients, setClients } = data;
 
   /* ------------------------------------------------------------------ */
   /*  Salons                                                            */
   /* ------------------------------------------------------------------ */
+  const currentSalon =
+    salons.find((s) => s.id === data.activeSalonId) || salons[0] || EMPTY_SALON;
+
   const updateSalon = useCallback(
     (updated: Salon) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       // Exécuter l'opération asynchrone sans bloquer useCallback
       (async () => {
         // Si l'ID est vide, on ne fait rien : il faut d'abord créer le salon avec createSalon()
@@ -487,220 +85,138 @@ export function useSupabaseSalonStore() {
           return;
         }
         try {
-          // Mise à jour d'un salon existant uniquement
-          const { error } = await supabase
-            .from("salons")
-          .update({
-            name: updated.name,
-            tagline: updated.tagline,
-            description: updated.description,
-            city: updated.city,
-            neighborhood: updated.neighborhood,
-            address: updated.address,
-            phone: updated.phone,
-            whatsapp: updated.whatsapp,
-            rating: updated.rating,
-            reviews_count: updated.reviewsCount,
-            is_published: updated.isPublished,
-            cover_image: updated.coverImage,
-            opening_hours: updated.openingHours,
-            rccm: updated.rccm,
-            currency: updated.currency,
-            sms_reminders_enabled: updated.smsRemindersEnabled,
-            whatsapp_confirmation_enabled:
-              updated.whatsappConfirmationEnabled,
-            latitude:
-              updated.latitude !== undefined && updated.latitude !== null
-                ? Number(updated.latitude)
-                : null,
-            longitude:
-              updated.longitude !== undefined && updated.longitude !== null
-                ? Number(updated.longitude)
-                : null,
-            updated_at: new Date().toISOString(),
-          })
-            .eq("id", updated.id);
-
-          if (error) throw error;
+          await unwrap(
+            supabase
+              .from("salons")
+              .update(salonUpdatePayload(updated))
+              .eq("id", updated.id),
+          );
 
           // Les prestations et la vitrine vivent dans leurs propres tables :
           // sans ces appels, les modifications étaient perdues au rechargement.
-          await syncSalonServices(updated.id, updated.services || []);
-          await syncSalonPhotos(updated.id, updated.gallery || []);
+          await syncSalonServices(supabase, updated.id, updated.services || [], data.signaturesRef);
+          await syncSalonPhotos(supabase, updated.id, updated.gallery || [], data.signaturesRef);
         } catch (e) {
           console.error("Erreur updateSalon", e);
         }
       })();
     },
-    [supabase, syncSalonServices, syncSalonPhotos],
+    [supabase, data.signaturesRef],
   );
 
   const createSalon = useCallback(
-    async (ownerId: string, data: SalonDraft) => {
-      if (!IS_CONFIGURED) return null;
+    async (ownerId: string, draft: SalonDraft): Promise<Salon | null> => {
+      if (!IS_CONFIGURED || !supabase) return null;
       try {
         // Les formulaires envoient des chaînes : on normalise une seule fois.
-        const latitude = toCoordinate(data.latitude);
-        const longitude = toCoordinate(data.longitude);
+        const latitude = toCoordinate(draft.latitude);
+        const longitude = toCoordinate(draft.longitude);
 
-        const basePayload: any = {
+        const basePayload = {
           owner_id: ownerId,
-          name: data.name || "Mon Salon Barber Cuts",
-          tagline: data.tagline || "",
-          description: data.description || "",
-          city: data.city || "",
-          neighborhood: data.neighborhood || "",
-          address: data.address || "",
-          phone: data.phone || "",
-          whatsapp: data.whatsapp || "",
-          rating: 0,
-          reviews_count: 0,
-          is_published: false,
-          cover_image: data.coverImage || "/images/placeholder-logo.png",
-          opening_hours: data.openingHours || "Mar - Dim: 08:30 - 20:30",
-          rccm: data.rccm,
-          currency: "FCFA",
-          sms_reminders_enabled: true,
-          whatsapp_confirmation_enabled: true,
+          name: draft.name || "Mon Salon Barber Cuts",
+          tagline: draft.tagline || "",
+          description: draft.description || "",
+          city: draft.city || "",
+          neighborhood: draft.neighborhood || "",
+          address: draft.address || "",
+          phone: draft.phone || "",
+          whatsapp: draft.whatsapp || "",
+          cover_image: draft.coverImage || "/images/placeholder-logo.png",
+          opening_hours: draft.openingHours || "Mar - Dim: 08:30 - 20:30",
+          rccm: draft.rccm,
+          ...SALON_INSERT_DEFAULTS,
+          ...(latitude !== undefined && { latitude }),
+          ...(longitude !== undefined && { longitude }),
         };
 
-        if (latitude !== undefined) basePayload.latitude = latitude;
-        if (longitude !== undefined) basePayload.longitude = longitude;
-
-        let newSalon: any = null;
-        let error: any = null;
-
-        const firstAttempt = await supabase
-          .from("salons")
-          .insert(basePayload)
-          .select()
-          .single();
-
-        newSalon = firstAttempt.data;
-        error = firstAttempt.error;
-
-        if (error) {
-          console.warn("createSalon: tentative avec coordonnées échouée, essai sans coordonnées", error?.message);
-          const fallbackPayload = { ...basePayload };
-          delete fallbackPayload.latitude;
-          delete fallbackPayload.longitude;
-
-          const secondAttempt = await supabase
-            .from("salons")
-            .insert(fallbackPayload)
-            .select()
-            .single();
-
-          newSalon = secondAttempt.data;
-          error = secondAttempt.error;
+        // Repli si la base ne connaît pas encore les colonnes GPS
+        // (migration 20240102 non appliquée) : réessayer sans coordonnées.
+        let row: any;
+        try {
+          row = await unwrap<any>(
+            supabase.from("salons").insert(basePayload).select().single(),
+          );
+        } catch (firstError) {
+          console.warn(
+            "createSalon: tentative avec coordonnées échouée, essai sans coordonnées",
+            firstError,
+          );
+          const { latitude: _lat, longitude: _lng, ...withoutCoords } =
+            basePayload;
+          row = await unwrap<any>(
+            supabase.from("salons").insert(withoutCoords).select().single(),
+          );
         }
-
-        if (error) throw error;
-
-        const salon: Salon = {
-          id: newSalon.id,
-          name: newSalon.name,
-          tagline: newSalon.tagline,
-          description: newSalon.description,
-          city: newSalon.city,
-          neighborhood: newSalon.neighborhood,
-          address: newSalon.address,
-          phone: newSalon.phone,
-          whatsapp: newSalon.whatsapp,
-          rating: Number(newSalon.rating || 0),
-          reviewsCount: newSalon.reviews_count || 0,
-          isPublished: newSalon.is_published ?? false,
-          coverImage: newSalon.cover_image,
-          openingHours: newSalon.opening_hours,
-          rccm: newSalon.rccm || undefined,
-          currency: newSalon.currency || "FCFA",
-          smsRemindersEnabled: newSalon.sms_reminders_enabled ?? true,
-          whatsappConfirmationEnabled:
-            newSalon.whatsapp_confirmation_enabled ?? true,
-          latitude: toCoordinate(newSalon.latitude) ?? latitude,
-          longitude: toCoordinate(newSalon.longitude) ?? longitude,
-          features: [],
-          gallery: [],
-          // Utiliser les services fournis dans data ou tableau vide
-          services:
-            data.services && data.services.length > 0
-              ? data.services.map((service, i) => ({
-                  id: `srv-${Date.now()}-${i}`,
-                  name: service.name,
-                  category: service.category || ("Hommes" as const),
-                  price: Number(service.price) || 0,
-                  duration: Number(service.duration) || 45,
-                  description: service.description || "",
-                  isPopular: service.isPopular,
-                }))
-              : [],
-          staff: [],
-        };
-
-        setSalons((prev) => [salon, ...prev]);
-        setActiveSalonId(salon.id);
-        localStorage.setItem("barbercuts_active_salon_id_v1", salon.id);
 
         // Les prestations saisies pendant l'onboarding sont écrites dans
         // `salon_services` : sans cela elles disparaissaient au rechargement.
-        if (salon.services.length > 0) {
-          const { error: servicesError } = await supabase
-            .from("salon_services")
-            .insert(
-              salon.services.map((service) => ({
-                salon_id: salon.id,
-                ...servicePayload(service),
-              })),
+        const services = (draft.services || []).map((service, i) => ({
+          id: `srv-${Date.now()}-${i}`,
+          name: service.name,
+          category: service.category || ("Hommes" as const),
+          price: Number(service.price) || 0,
+          duration: Number(service.duration) || 45,
+          description: service.description || "",
+          isPopular: service.isPopular,
+        }));
+        if (services.length > 0) {
+          try {
+            await unwrap(
+              supabase
+                .from("salon_services")
+                .insert(
+                  services.map((service) => ({
+                    salon_id: row.id,
+                    ...servicePayload(service),
+                  })),
+                ),
             );
-          if (servicesError) {
-            console.error("Erreur création des prestations", servicesError);
+          } catch (e) {
+            console.error("Erreur création des prestations", e);
           }
         }
 
+        const salon: Salon = {
+          ...mapSalonRow(row),
+          latitude: toCoordinate(row.latitude) ?? latitude,
+          longitude: toCoordinate(row.longitude) ?? longitude,
+          services,
+        };
+
+        // Le périmètre multi-tenant bascule immédiatement sur le salon créé :
+        // setActiveSalonId persiste le choix et relit les données du nouveau
+        // salon (et non plus `salons` localement, qui serait écrasé par ce reload).
+        data.setActiveSalonId(salon.id);
+
         return salon;
-      } catch (e: any) {
-        console.error("Erreur createSalon", e?.message || e, e);
+      } catch (e) {
+        console.error("Erreur createSalon", e);
         return null;
       }
     },
-    [supabase],
+    [supabase, data],
   );
 
   /* ------------------------------------------------------------------ */
   /*  Rendez-vous                                                       */
   /* ------------------------------------------------------------------ */
   const bookAppointment = useCallback(
-    (data: Omit<Appointment, "id" | "createdAt">): Appointment => {
+    (appointmentData: Omit<Appointment, "id" | "createdAt">): Appointment => {
       const apt: Appointment = {
-        ...data,
+        ...appointmentData,
         id: "apt-" + Date.now(),
         createdAt: new Date().toISOString(),
       };
 
       // Insertion en arrière-plan dans Supabase (fire-and-forget).
       // L'abonnement temps réel rechargera les données automatiquement.
-      if (IS_CONFIGURED) {
-        supabase
-          .from("appointments")
-          .insert({
-            salon_id: data.salonId,
-            client_name: data.clientName,
-            client_phone: data.clientPhone,
-            service_id: data.serviceId || null,
-            service_name: data.serviceName,
-            service_price: data.servicePrice,
-            staff_name: data.staffName || null,
-            date: data.date,
-            time: data.time,
-            status: data.status,
-            source: data.source,
-            notes: data.notes || null,
-            payment_status: data.paymentStatus || "unpaid",
-            payment_method: data.paymentMethod || null,
-          })
-          .then(undefined, (e: unknown) =>
-            console.error("Erreur bookAppointment", e),
-          );
+      if (IS_CONFIGURED && supabase) {
+        unwrap(
+          supabase.from("appointments").insert(
+            appointmentInsertPayload(appointmentData),
+          ),
+        ).catch((e) => console.error("Erreur bookAppointment", e));
       }
 
       return apt;
@@ -710,14 +226,14 @@ export function useSupabaseSalonStore() {
 
   const updateAppointmentStatus = useCallback(
     async (id: string, status: Appointment["status"]) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        const { error } = await supabase
-          .from("appointments")
-          .update({ status, updated_at: new Date().toISOString() })
-          .eq("id", id);
-
-        if (error) throw error;
+        await unwrap(
+          supabase
+            .from("appointments")
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq("id", id),
+        );
       } catch (e) {
         console.error("Erreur updateAppointmentStatus", e);
       }
@@ -731,18 +247,18 @@ export function useSupabaseSalonStore() {
       paymentStatus: Appointment["paymentStatus"],
       paymentMethod?: Appointment["paymentMethod"],
     ) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        const { error } = await supabase
-          .from("appointments")
-          .update({
-            payment_status: paymentStatus,
-            payment_method: paymentMethod || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id);
-
-        if (error) throw error;
+        await unwrap(
+          supabase
+            .from("appointments")
+            .update({
+              payment_status: paymentStatus,
+              payment_method: paymentMethod || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", id),
+        );
       } catch (e) {
         console.error("Erreur updateAppointmentPayment", e);
       }
@@ -752,13 +268,9 @@ export function useSupabaseSalonStore() {
 
   const deleteAppointment = useCallback(
     async (id: string) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        const { error } = await supabase
-          .from("appointments")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
+        await unwrap(supabase.from("appointments").delete().eq("id", id));
       } catch (e) {
         console.error("Erreur deleteAppointment", e);
       }
@@ -769,11 +281,14 @@ export function useSupabaseSalonStore() {
   /* ------------------------------------------------------------------ */
   /*  Clients                                                           */
   /* ------------------------------------------------------------------ */
+  /** Préfixe attribué localement aux clients non encore enregistrés en base. */
+  const LOCAL_CLIENT_ID_PREFIX = "cli-";
+
   const saveClient = useCallback(
     async (client: SalonClient) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        if (client.id.startsWith("cli-")) {
+        if (client.id.startsWith(LOCAL_CLIENT_ID_PREFIX)) {
           // Nouveau client
           if (!currentSalon?.id) {
             console.error(
@@ -781,83 +296,37 @@ export function useSupabaseSalonStore() {
             );
             return;
           }
-          const { data: newClient, error } = await supabase
-            .from("salon_clients")
-            .insert({
-              salon_id: currentSalon.id,
-              name: client.name,
-              phone: client.phone,
-              email: client.email || null,
-              favorite_service: client.favoriteService,
-              preferred_staff: client.preferredStaff,
-              total_visits: client.totalVisits,
-              total_spent: client.totalSpent,
-              last_visit: client.lastVisit || null,
-              next_appointment: client.nextAppointment || null,
-              status: client.status,
-              source: client.source,
-              notes: client.notes || null,
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          const c: SalonClient = {
-            id: newClient.id,
-            name: newClient.name,
-            phone: newClient.phone,
-            email: newClient.email || undefined,
-            favoriteService: newClient.favorite_service,
-            preferredStaff: newClient.preferred_staff,
-            totalVisits: newClient.total_visits || 0,
-            totalSpent: newClient.total_spent || 0,
-            lastVisit: newClient.last_visit || "",
-            nextAppointment: newClient.next_appointment || undefined,
-            status: newClient.status as SalonClient["status"],
-            source: newClient.source as SalonClient["source"],
-            notes: newClient.notes || undefined,
-          };
-          setClients((prev) => [c, ...prev]);
+          const row = await unwrap<any>(
+            supabase
+              .from("salon_clients")
+              .insert({ salon_id: currentSalon.id, ...clientColumnsPayload(client) })
+              .select()
+              .single(),
+          );
+          setClients((prev) => [mapClientRow(row), ...prev]);
         } else {
-          // Mise à jour
-          const { error } = await supabase
-            .from("salon_clients")
-            .update({
-              name: client.name,
-              phone: client.phone,
-              email: client.email || null,
-              favorite_service: client.favoriteService,
-              preferred_staff: client.preferredStaff,
-              total_visits: client.totalVisits,
-              total_spent: client.totalSpent,
-              last_visit: client.lastVisit || null,
-              next_appointment: client.nextAppointment || null,
-              status: client.status,
-              source: client.source,
-              notes: client.notes || null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", client.id);
-
-          if (error) throw error;
+          await unwrap(
+            supabase
+              .from("salon_clients")
+              .update({
+                ...clientColumnsPayload(client),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", client.id),
+          );
         }
       } catch (e) {
         console.error("Erreur saveClient", e);
       }
     },
-    [supabase, currentSalon],
+    [supabase, currentSalon, setClients],
   );
 
   const deleteClient = useCallback(
     async (id: string) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        const { error } = await supabase
-          .from("salon_clients")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
+        await unwrap(supabase.from("salon_clients").delete().eq("id", id));
       } catch (e) {
         console.error("Erreur deleteClient", e);
       }
@@ -868,45 +337,32 @@ export function useSupabaseSalonStore() {
   /* ------------------------------------------------------------------ */
   /*  Équipe (staff)                                                    */
   /* ------------------------------------------------------------------ */
+  /** Préfixe attribué localement aux membres non encore enregistrés en base. */
+  const LOCAL_STAFF_ID_PREFIX = "st-";
+
   const saveStaffMember = useCallback(
     async (staff: StaffMember) => {
-      if (!IS_CONFIGURED || !currentSalon) return;
+      if (!IS_CONFIGURED || !supabase || !currentSalon) return;
       try {
-        if (staff.id.startsWith("st-")) {
-          const { error } = await supabase.from("salon_staff").insert({
-            salon_id: currentSalon.id,
-            name: staff.name,
-            role: staff.role || "",
-            specialty: staff.specialty || null,
-            phone: staff.phone || null,
-            schedule: staff.schedule || null,
-            color: staff.color || "bg-[#202321]",
-            initials: staff.initials || "",
-            rating: staff.rating || 4.9,
-            reviews_count: staff.reviewsCount || 0,
-            appointments_count: staff.appointmentsCount || 0,
-            status: staff.status || "active",
-          });
-          if (error) throw error;
+        const columns = staffColumnsPayload(staff);
+        if (staff.id.startsWith(LOCAL_STAFF_ID_PREFIX)) {
+          await unwrap(
+            supabase
+              .from("salon_staff")
+              .insert({
+                salon_id: currentSalon.id,
+                ...columns,
+                // Un nouveau membre sans note hérite de la valeur d'affichage par défaut.
+                rating: columns.rating ?? DEFAULT_STAFF_RATING,
+              }),
+          );
         } else {
-          const { error } = await supabase
-            .from("salon_staff")
-            .update({
-              name: staff.name,
-              role: staff.role,
-              specialty: staff.specialty || null,
-              phone: staff.phone || null,
-              schedule: staff.schedule || null,
-              color: staff.color,
-              initials: staff.initials,
-              rating: staff.rating,
-              reviews_count: staff.reviewsCount,
-              appointments_count: staff.appointmentsCount,
-              status: staff.status,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", staff.id);
-          if (error) throw error;
+          await unwrap(
+            supabase
+              .from("salon_staff")
+              .update({ ...columns, updated_at: new Date().toISOString() })
+              .eq("id", staff.id),
+          );
         }
       } catch (e) {
         console.error("Erreur saveStaffMember", e);
@@ -917,13 +373,9 @@ export function useSupabaseSalonStore() {
 
   const deleteStaffMember = useCallback(
     async (id: string) => {
-      if (!IS_CONFIGURED) return;
+      if (!IS_CONFIGURED || !supabase) return;
       try {
-        const { error } = await supabase
-          .from("salon_staff")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
+        await unwrap(supabase.from("salon_staff").delete().eq("id", id));
       } catch (e) {
         console.error("Erreur deleteStaffMember", e);
       }
@@ -932,47 +384,243 @@ export function useSupabaseSalonStore() {
   );
 
   /* ------------------------------------------------------------------ */
+  /*  Avis clients (P2 — table `salon_reviews`)                         */
+  /* ------------------------------------------------------------------ */
+  /**
+   * L'insertion déclenche côté base le trigger `recompute_salon_rating` :
+   * la note moyenne et le compteur d'avis du salon sont recalculés en
+   * source, puis propagés au client par l'abonnement temps réel.
+   * Le calcul local du store localStorage n'est donc pas dupliqué ici.
+   */
+  const saveReview = useCallback(
+    async (review: Omit<SalonReview, "id" | "createdAt">) => {
+      if (!IS_CONFIGURED || !supabase) return;
+      try {
+        await unwrap(supabase.from("salon_reviews").insert(reviewInsertPayload(review)));
+      } catch (e) {
+        console.error("Erreur saveReview", e);
+      }
+    },
+    [supabase],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  Abonnements (P2 — table `salon_subscriptions`)                    */
+  /* ------------------------------------------------------------------ */
+  /** Écrit l'abonnement en base ; le temps réel recharge l'état côté UI. */
+  const persistSubscription = useCallback(
+    async (salonId: string, sub: SalonSubscription) => {
+      if (!IS_CONFIGURED || !supabase || !salonId) return;
+      try {
+        await unwrap(
+          supabase
+            .from("salon_subscriptions")
+            .upsert(subscriptionUpsertPayload(salonId, sub), { onConflict: "salon_id" }),
+        );
+      } catch (e) {
+        console.error("Erreur persistance abonnement", e);
+      }
+    },
+    [supabase],
+  );
+
+  const setSubscription = useCallback(
+    (salonId: string, sub: SalonSubscription) => {
+      persistSubscription(salonId, sub);
+    },
+    [persistSubscription],
+  );
+
+  const getSubscription = useCallback(
+    (salonId: string): SalonSubscription | null =>
+      salonId === data.activeSalonId ? data.subscription : null,
+    [data.activeSalonId, data.subscription],
+  );
+
+  const upgradeToPro = useCallback(
+    (
+      salonId: string,
+      paymentMethod: "wave" | "orange_money" | "card",
+    ): SalonSubscription => {
+      const now = new Date();
+      const nextPayment = new Date(now);
+      nextPayment.setMonth(nextPayment.getMonth() + 1);
+      const sub: SalonSubscription = {
+        plan: "pro",
+        status: "active",
+        priceFcfa: PRO_PRICE_FCFA,
+        paymentMethod,
+        billingCycleStart: now.toISOString(),
+        billingCycleEnd: nextPayment.toISOString(),
+        lastPaymentAt: now.toISOString(),
+        nextPaymentAt: nextPayment.toISOString(),
+      };
+      persistSubscription(salonId, sub);
+      return sub;
+    },
+    [persistSubscription],
+  );
+
+  const startFreeTrial = useCallback(
+    (salonId: string): SalonSubscription => {
+      const now = new Date();
+      const trialEnd = new Date(now);
+      trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
+      const sub: SalonSubscription = {
+        plan: "pro",
+        status: "trial",
+        priceFcfa: PRO_PRICE_FCFA,
+        trialEndsAt: trialEnd.toISOString(),
+        billingCycleStart: now.toISOString(),
+        billingCycleEnd: trialEnd.toISOString(),
+      };
+      persistSubscription(salonId, sub);
+      return sub;
+    },
+    [persistSubscription],
+  );
+
+  const cancelSubscription = useCallback(
+    (salonId: string): SalonSubscription | null => {
+      const current = getSubscription(salonId);
+      if (!current) return null;
+      const next: SalonSubscription = { ...current, status: "cancelled" };
+      persistSubscription(salonId, next);
+      return next;
+    },
+    [getSubscription, persistSubscription],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  Invitations d'équipe (P2 — table `team_invitations`)              */
+  /* ------------------------------------------------------------------ */
+  const inviteTeamMember = useCallback(
+    (dataInput: {
+      salonId: string;
+      email: string;
+      role: TeamInvitation["role"];
+      invitedBy: string;
+    }): TeamInvitation => {
+      const existing = data.teamInvitations.find(
+        (inv) =>
+          inv.salonId === dataInput.salonId &&
+          inv.email === dataInput.email &&
+          inv.status === "pending",
+      );
+      if (existing) {
+        throw new Error("Une invitation en attente existe déjà pour cet email.");
+      }
+      const invitation: TeamInvitation = {
+        id: "inv-" + Date.now(),
+        salonId: dataInput.salonId,
+        email: dataInput.email,
+        role: dataInput.role,
+        status: "pending",
+        invitedBy: dataInput.invitedBy,
+        invitedAt: new Date().toISOString(),
+      };
+      if (IS_CONFIGURED && supabase) {
+        unwrap(
+          supabase
+            .from("team_invitations")
+            .insert(teamInvitationInsertPayload(invitation)),
+        ).catch((e) => console.error("Erreur inviteTeamMember", e));
+      }
+      return invitation;
+    },
+    [supabase, data.teamInvitations],
+  );
+
+  const respondToInvitation = useCallback(
+    async (invitationId: string, response: "accepted" | "declined") => {
+      if (!IS_CONFIGURED || !supabase) return;
+      const inv = data.teamInvitations.find((i) => i.id === invitationId);
+      try {
+        await unwrap(
+          supabase
+            .from("team_invitations")
+            .update({
+              status: response,
+              responded_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", invitationId),
+        );
+      } catch (e) {
+        console.error("Erreur respondToInvitation", e);
+        return;
+      }
+      // Si acceptée, ajouter le collaborateur au staff du salon
+      // (miroir du comportement du store local).
+      if (response === "accepted" && inv && currentSalon?.id === inv.salonId) {
+        const handle = inv.email.split("@")[0];
+        const newStaff: StaffMember = {
+          id: "staff-" + Date.now(),
+          name: handle,
+          role: ROLE_LABELS[inv.role],
+          initials: handle.slice(0, 2).toUpperCase(),
+          color: "bg-[#586b83]",
+          specialty: "",
+          phone: "",
+          status: "active",
+          schedule: "Mar - Dim (08:30 - 18:30)",
+        };
+        if (!currentSalon.staff.some((s) => s.id === newStaff.id)) {
+          saveStaffMember(newStaff);
+        }
+      }
+    },
+    [supabase, data.teamInvitations, currentSalon, saveStaffMember],
+  );
+
+  /* ------------------------------------------------------------------ */
   /*  Reset                                                             */
   /* ------------------------------------------------------------------ */
   const resetDefaults = useCallback(async () => {
-    if (!IS_CONFIGURED) return;
+    if (!IS_CONFIGURED || !supabase) return;
     // Réinitialisation : supprimer toutes les données du salon actif
-    if (activeSalonId) {
-      await supabase
-        .from("appointments")
-        .delete()
-        .eq("salon_id", activeSalonId);
-      await supabase
-        .from("salon_clients")
-        .delete()
-        .eq("salon_id", activeSalonId);
-      await supabase.from("salon_staff").delete().eq("salon_id", activeSalonId);
-      await supabase
-        .from("salon_services")
-        .delete()
-        .eq("salon_id", activeSalonId);
-      await supabase
-        .from("showcase_photos")
-        .delete()
-        .eq("salon_id", activeSalonId);
+    if (data.activeSalonId) {
+      for (const table of [
+        "salon_reviews",
+        "team_invitations",
+        "appointments",
+        "salon_clients",
+        "salon_staff",
+        "salon_services",
+        "showcase_photos",
+      ]) {
+        await unwrap(
+          supabase.from(table).delete().eq("salon_id", data.activeSalonId),
+        ).catch((e) =>
+          console.error(`Erreur suppression \`${table}\``, e),
+        );
+      }
     }
     window.location.reload();
-  }, [supabase, activeSalonId]);
+  }, [supabase, data.activeSalonId]);
 
   return {
     salons,
     currentSalon,
-    activeSalonId,
-    setActiveSalonId,
-    appointments,
+    activeSalonId: data.activeSalonId,
+    setActiveSalonId: data.setActiveSalonId,
+    appointments: data.appointments,
     clients,
+    // P2 — comptes clients : la persistance base (`client_accounts`) est
+    // couverte par la migration 20240104 ; le flux d'authentification client
+    // reste à brancher (P3), le store renvoie un état vide explicite.
     clientAccounts: [] as ClientAccount[],
     clientAccount: null,
-    subscriptions: {} as Record<string, SalonSubscription>,
-    teamInvitations: [] as TeamInvitation[],
+    subscriptions: data.subscription
+      ? ({ [data.activeSalonId]: data.subscription } as Record<
+          string,
+          SalonSubscription
+        >)
+      : ({} as Record<string, SalonSubscription>),
+    teamInvitations: data.teamInvitations,
     offlineQueue: [] as OfflineAction[],
     isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
-    isLoaded,
+    isLoaded: data.isLoaded,
     updateSalon,
     createSalon,
     bookAppointment,
@@ -981,8 +629,8 @@ export function useSupabaseSalonStore() {
     updateAppointmentPayment,
     saveClient,
     deleteClient,
-    reviews: [] as SalonReview[],
-    saveReview: () => {},
+    reviews: data.reviews,
+    saveReview,
     registerClient: () => {
       throw new Error("Non disponible avec Supabase");
     },
@@ -990,19 +638,13 @@ export function useSupabaseSalonStore() {
       throw new Error("Non disponible avec Supabase");
     },
     logoutClient: () => {},
-    getSubscription: () => null,
-    setSubscription: () => {},
-    upgradeToPro: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    startFreeTrial: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    cancelSubscription: () => null,
-    inviteTeamMember: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    respondToInvitation: () => {},
+    getSubscription,
+    setSubscription,
+    upgradeToPro,
+    startFreeTrial,
+    cancelSubscription,
+    inviteTeamMember,
+    respondToInvitation,
     syncOfflineQueue: async () => {},
     saveStaffMember,
     deleteStaffMember,

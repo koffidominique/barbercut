@@ -1,0 +1,3 @@
+# Configuration minimale pour la CLI Supabase (v2.x).
+# project_id sert d'identifiant local pour `supabase db push` / `supabase start`.
+project_id = "barbercuts"

@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -608,7 +609,7 @@ export function VitrineManager({
                     </div>
                     <div className="text-right">
                       <div className="font-serif text-base font-bold text-[#202321]">
-                        {srv.price.toLocaleString('fr-FR')} F
+                        {formatPrice(srv.price, salon)}
                       </div>
                       <div className="text-[10px] text-[#8c9089]">{srv.duration} min</div>
                     </div>
@@ -716,7 +717,7 @@ export function VitrineManager({
                       </div>
                       <div className="text-right">
                         <div className="font-serif text-xs font-bold text-[#bd664a]">
-                          {srv.price.toLocaleString('fr-FR')} FCFA
+                          {formatPrice(srv.price, salon)}
                         </div>
                       </div>
                     </div>

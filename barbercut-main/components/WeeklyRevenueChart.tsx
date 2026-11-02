@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import { TrendingUp, Sparkles, Calendar, ArrowUpRight } from 'lucide-react'
+import { formatPrice } from '@/lib/locale'
+import type { Salon } from '@/lib/types'
 
 interface DayRevenueData {
   day: string
@@ -17,7 +19,11 @@ interface DayRevenueData {
 const CURRENT_WEEK_DATA: DayRevenueData[] = []
 const PREVIOUS_WEEK_DATA: DayRevenueData[] = []
 
-export function WeeklyRevenueChart() {
+interface WeeklyRevenueChartProps {
+  salon?: Salon | null
+}
+
+export function WeeklyRevenueChart({ salon = null }: WeeklyRevenueChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current')
@@ -316,7 +322,7 @@ export function WeeklyRevenueChart() {
         <div>
           <span className="text-[11px] text-[#92958f]">Total de la semaine</span>
           <div className="mt-0.5 font-serif text-xl font-bold text-[#202321]">
-            {weekTotal.toLocaleString('fr-FR')} FCFA
+            {formatPrice(weekTotal, salon)}
           </div>
           <span className="text-[10px] text-[#4d7c3b] font-semibold flex items-center gap-0.5">
             <ArrowUpRight size={12} /> +12,8% vs S-1
@@ -326,7 +332,7 @@ export function WeeklyRevenueChart() {
         <div>
           <span className="text-[11px] text-[#92958f]">Part Marketplace</span>
           <div className="mt-0.5 font-serif text-xl font-bold text-[#bd664a]">
-            {weekMarketplace.toLocaleString('fr-FR')} FCFA
+            {formatPrice(weekMarketplace, salon)}
           </div>
           <span className="text-[10px] text-[#8c9089]">
             {Math.round((weekMarketplace / weekTotal) * 100)}% du chiffre global
@@ -336,7 +342,7 @@ export function WeeklyRevenueChart() {
         <div>
           <span className="text-[11px] text-[#92958f]">Pic d’activité</span>
           <div className="mt-0.5 font-serif text-xl font-bold text-[#202321]">
-            {peakDay.day} ({peakDay.total.toLocaleString('fr-FR')} F)
+            {peakDay.day} ({formatPrice(peakDay.total, salon)})
           </div>
           <span className="text-[10px] text-[#8c9089]">
             {peakDay.appointmentsCount} rendez-vous honorés
@@ -382,16 +388,16 @@ export function WeeklyRevenueChart() {
               <div className="flex justify-between font-bold">
                 <span>CA Total :</span>
                 <span className="font-serif text-[#f4c58d]">
-                  {hoveredData.total.toLocaleString('fr-FR')} FCFA
+                  {formatPrice(hoveredData.total, salon)}
                 </span>
               </div>
               <div className="flex justify-between text-[#cfd6cf]">
                 <span>• Marketplace :</span>
-                <span>{hoveredData.marketplace.toLocaleString('fr-FR')} F</span>
+                <span>{formatPrice(hoveredData.marketplace, salon)}</span>
               </div>
               <div className="flex justify-between text-[#cfd6cf]">
                 <span>• Direct Salon :</span>
-                <span>{hoveredData.direct.toLocaleString('fr-FR')} F</span>
+                <span>{formatPrice(hoveredData.direct, salon)}</span>
               </div>
             </div>
           </div>

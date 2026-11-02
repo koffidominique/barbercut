@@ -14,6 +14,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { Salon, Appointment } from '@/lib/store'
+import { formatPrice, getSalonLocale } from '@/lib/locale'
 
 interface ERPReportsViewProps {
   salon: Salon
@@ -32,8 +33,8 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
   const marketplaceRevenue = marketplaceApts.reduce((sum, a) => sum + (a.servicePrice || 0), 0)
   const directRevenue = directApts.reduce((sum, a) => sum + (a.servicePrice || 0), 0)
 
-  const marketplaceShare = totalRevenue > 0 ? Math.round((marketplaceRevenue / totalRevenue) * 100) : 45
-  const avgTicket = salonApts.length > 0 ? Math.round(totalRevenue / salonApts.length) : 11500
+  const marketplaceShare = totalRevenue > 0 ? Math.round((marketplaceRevenue / totalRevenue) * 100) : 0
+  const avgTicket = salonApts.length > 0 ? Math.round(totalRevenue / salonApts.length) : 0
 
   // Category breakdown
   const categoryStats = [
@@ -42,13 +43,17 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
     { label: 'Rituels Barbe & Serviette chaude', share: '18%', amount: Math.round(totalRevenue * 0.18), color: 'bg-[#7a8c5d]' },
   ]
 
+  // Libelle de devise pour l'en-tete CSV (suivant la devise du salon).
+  const { currency: salonCurrency } = getSalonLocale(salon)
+  const currencyLabel = salonCurrency === 'XOF' || salonCurrency === 'XAF' ? 'FCFA' : salonCurrency
+
   const handleExport = () => {
     const headers = [
       'ID',
       'Client',
       'Téléphone',
       'Prestation',
-      'Prix (FCFA)',
+      'Prix (' + currencyLabel + ')',
       'Coiffeur',
       'Date',
       'Heure',
@@ -178,7 +183,7 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
             </div>
           </div>
           <div className="mt-2 font-serif text-2xl font-bold tracking-tight text-[#202321]">
-            {(totalRevenue || 486500).toLocaleString('fr-FR')} FCFA
+            {formatPrice(totalRevenue, salon)}
           </div>
           <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#4d7c3b] font-semibold">
             <ArrowUpRight size={13} />
@@ -209,7 +214,7 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
             </div>
           </div>
           <div className="mt-2 font-serif text-2xl font-bold tracking-tight text-[#202321]">
-            {avgTicket.toLocaleString('fr-FR')} FCFA
+            {formatPrice(avgTicket, salon)}
           </div>
           <div className="mt-2 text-[11px] text-[#868a83]">
             Porté par les packs complets
@@ -250,7 +255,7 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
                   <ShoppingBag size={14} /> Marketplace Barber Cuts
                 </span>
                 <span className="font-serif font-bold text-[#202321]">
-                  {(marketplaceRevenue || 230000).toLocaleString('fr-FR')} FCFA ({marketplaceShare}%)
+                  {formatPrice(marketplaceRevenue, salon)} ({marketplaceShare}%)
                 </span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-[#f4f2ec]">
@@ -267,7 +272,7 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
                   <Users size={14} /> Réservations directes & Téléphone
                 </span>
                 <span className="font-serif font-bold text-[#202321]">
-                  {(directRevenue || 256500).toLocaleString('fr-FR')} FCFA ({100 - marketplaceShare}%)
+                  {formatPrice(directRevenue, salon)} ({100 - marketplaceShare}%)
                 </span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-[#f4f2ec]">
@@ -299,7 +304,7 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
                 <div className="flex justify-between text-xs font-semibold mb-1.5">
                   <span className="text-[#555a53]">{item.label}</span>
                   <span className="font-serif font-bold text-[#202321]">
-                    {item.amount.toLocaleString('fr-FR')} FCFA ({item.share})
+                    {formatPrice(item.amount, salon)} ({item.share})
                   </span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-[#f4f2ec]">
@@ -360,10 +365,10 @@ export function ERPReportsView({ salon, appointments }: ERPReportsViewProps) {
                     <td className="py-3 text-[#70756e]">{st.role}</td>
                     <td className="py-3 text-center font-bold text-[#202321]">{count}</td>
                     <td className="py-3 text-right font-serif font-bold text-[#202321]">
-                      {generated.toLocaleString('fr-FR')} FCFA
+                      {formatPrice(generated, salon)}
                     </td>
                     <td className="py-3 text-right font-serif font-bold text-[#bd664a]">
-                      {commission.toLocaleString('fr-FR')} FCFA
+                      {formatPrice(commission, salon)}
                     </td>
                     <td className="py-3 text-right font-semibold text-[#487a38]">
                       ★ {st.rating || '4.9'}

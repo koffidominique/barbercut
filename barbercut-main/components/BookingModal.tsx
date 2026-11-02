@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { formatPrice } from '@/lib/locale'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   X,
@@ -17,6 +18,13 @@ import {
 } from 'lucide-react'
 import { Salon, SalonService, Appointment, useSalonStore } from '@/lib/store'
 import { useNotifications } from '@/lib/notifications'
+import {
+  FIRST_AVAILABLE_LABEL,
+  generateDaySlots,
+  summarizeSlots,
+  todayDate,
+  upcomingBookingDays,
+} from '@/lib/slot-logic'
 import { modalOverlay } from '@/components/ui/motion'
 
 interface BookingModalProps {
@@ -27,11 +35,6 @@ interface BookingModalProps {
   onBookSuccess: (appointment: Appointment) => void
   onSwitchToErp?: () => void
 }
-
-const TIME_SLOTS = [
-  '09:00', '09:45', '10:30', '11:15', '12:00',
-  '14:00', '14:45', '15:30', '16:15', '17:00', '18:00', '19:00'
-]
 
 const STEP_LABELS = [
   'Votre prestation',
@@ -47,17 +50,16 @@ export function BookingModal({
   onBookSuccess,
   onSwitchToErp,
 }: BookingModalProps) {
-  const { bookAppointment, clientAccount, registerClient, loginClient, logoutClient } = useSalonStore()
+  const { bookAppointment, appointments, clientAccount, registerClient, loginClient, logoutClient } = useSalonStore()
   const { addNotification } = useNotifications()
   const [step, setStep] = useState(0)
   const [selectedServiceId, setSelectedServiceId] = useState<string>(
     preselectedService ? preselectedService.id : salon.services[0]?.id || ''
   )
-  const [selectedStaff, setSelectedStaff] = useState<string>(
-    salon.staff[0]?.name || 'Premier disponible'
-  )
-  const [selectedDate, setSelectedDate] = useState<string>('2026-11-02')
-  const [selectedTime, setSelectedTime] = useState<string>('14:00')
+  const [selectedStaff, setSelectedStaff] = useState<string>(FIRST_AVAILABLE_LABEL)
+  const [bookingDays] = useState(() => upcomingBookingDays(7))
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayDate())
+  const [selectedTime, setSelectedTime] = useState<string>('')
   const [clientName, setClientName] = useState<string>(clientAccount?.name || '')
   const [clientPhone, setClientPhone] = useState<string>(clientAccount?.phone || '')
   const [clientEmail, setClientEmail] = useState<string>(clientAccount?.email || '')
@@ -71,6 +73,35 @@ export function BookingModal({
   const [confirmationSent, setConfirmationSent] = useState<{ type: 'email' | 'sms'; to: string } | null>(null)
 
   const activeService = salon.services.find((s) => s.id === selectedServiceId) || salon.services[0]
+
+  // Grille de créneaux réelle : horaires du salon + durée de la prestation +
+  // conflits avec les rendez-vous existants (détection côté client ; la base
+  // rejette aussi toute double réservation via RLS — double filet).
+  const resolvedStaff =
+    selectedStaff === FIRST_AVAILABLE_LABEL
+      ? salon.staff[0]?.name || FIRST_AVAILABLE_LABEL
+      : selectedStaff
+  const daySlots = useMemo(
+    () =>
+      generateDaySlots({
+        salon,
+        service: activeService,
+        staffName: resolvedStaff,
+        date: selectedDate,
+        appointments,
+      }),
+    [salon, activeService, resolvedStaff, selectedDate, appointments],
+  )
+  const slotSummary = summarizeSlots(daySlots)
+
+  // Si le créneau sélectionné n'est plus libre (staff/date/service changés),
+  // on re-sélectionne automatiquement le premier créneau disponible.
+  useEffect(() => {
+    const stillFree = daySlots.some((slot) => slot.time === selectedTime && slot.available)
+    if (!stillFree) {
+      setSelectedTime(daySlots.find((slot) => slot.available)?.time || '')
+    }
+  }, [daySlots, selectedTime])
 
   const goToStep = (next: number) => {
     setErrorMsg('')
@@ -112,7 +143,7 @@ export function BookingModal({
     }
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!clientName.trim()) {
       setErrorMsg('Veuillez renseigner votre nom complet.')
       return
@@ -127,17 +158,35 @@ export function BookingModal({
       return
     }
 
+    if (!selectedTime) {
+      setErrorMsg(
+        slotSummary.noSlots
+          ? "Ce salon n'a aucun créneau ce jour-là. Choisissez une autre date."
+          : 'Tous les créneaux sont pris pour cette date. Choisissez un autre jour ou un autre barbier.',
+      )
+      return
+    }
+
     setSubmitting(true)
 
+    try {
+      await performBooking(activeService)
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Réservation impossible.')
+      setSubmitting(false)
+    }
+  }
+
+  const performBooking = async (service: SalonService) => {
     const newApt: Omit<Appointment, 'id' | 'createdAt'> = {
       salonId: salon.id,
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
       clientEmail: clientEmail.trim() || undefined,
-      serviceId: activeService.id,
-      serviceName: activeService.name,
-      servicePrice: activeService.price,
-      staffName: selectedStaff,
+      serviceId: service.id,
+      serviceName: service.name,
+      servicePrice: service.price,
+      staffName: resolvedStaff,
       date: selectedDate,
       time: selectedTime,
       status: 'confirmed',
@@ -149,6 +198,8 @@ export function BookingModal({
     setConfirmedBooking(created)
     setSubmitting(false)
     setStep(2)
+    // NOTE : la garde anti-conflit du store peut lever ici ; elle est
+    // interceptée par le try/catch de handleConfirm.
 
     setConfirmationSent({
       type: clientEmail ? 'email' : 'sms',
@@ -158,7 +209,7 @@ export function BookingModal({
     addNotification({
       type: 'appointment',
       title: 'Nouveau rendez-vous Marketplace',
-      message: `${clientName.trim()} a réservé ${activeService.name} pour le ${selectedDate} à ${selectedTime}.`,
+      message: `${clientName.trim()} a réservé ${service.name} pour le ${selectedDate} à ${selectedTime}.`,
       actionUrl: '/',
       actionLabel: 'Voir dans l\'ERP',
     })
@@ -178,9 +229,9 @@ export function BookingModal({
     setAuthError('')
     setConfirmationSent(null)
     setSelectedServiceId(preselectedService ? preselectedService.id : salon.services[0]?.id || '')
-    setSelectedStaff(salon.staff[0]?.name || 'Premier disponible')
-    setSelectedDate('2026-11-02')
-    setSelectedTime('14:00')
+    setSelectedStaff(FIRST_AVAILABLE_LABEL)
+    setSelectedDate(todayDate())
+    setSelectedTime('')
     onClose()
   }
 
@@ -361,7 +412,7 @@ export function BookingModal({
                 <div className="flex justify-between pt-1 text-sm font-bold text-[#202321]">
                   <span>Total à régler sur place</span>
                   <span className="text-[#d47b59]">
-                    {confirmedBooking.servicePrice.toLocaleString('fr-FR')} FCFA
+                    {formatPrice(confirmedBooking.servicePrice, salon)}
                   </span>
                 </div>
               </div>
@@ -507,7 +558,7 @@ export function BookingModal({
                               </div>
                               <div className="text-right">
                                 <span className="font-serif text-xs font-bold text-[#bd664a] block">
-                                  {srv.price.toLocaleString('fr-FR')} F
+                                  {formatPrice(srv.price, salon)}
                                 </span>
                                 <span className="text-[10px] text-[#868a83]">
                                   {srv.duration} min · {srv.category}
@@ -566,12 +617,11 @@ export function BookingModal({
                         onChange={(e) => setSelectedDate(e.target.value)}
                         className="w-full rounded-xl border border-[#e5e2db] bg-white px-3 py-2.5 text-xs text-[#202321] outline-none focus:border-[#bd664a]"
                       >
-                        <option value="2026-11-02">Aujourd'hui (Lundi 2 Novembre)</option>
-                        <option value="2026-11-03">Demain (Mardi 3 Novembre)</option>
-                        <option value="2026-11-04">Mercredi 4 Novembre</option>
-                        <option value="2026-11-05">Jeudi 5 Novembre</option>
-                        <option value="2026-11-06">Vendredi 6 Novembre</option>
-                        <option value="2026-11-07">Samedi 7 Novembre</option>
+                        {bookingDays.map((day) => (
+                          <option key={day.value} value={day.value}>
+                            {day.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -580,24 +630,39 @@ export function BookingModal({
                         Heure du créneau
                       </label>
                       <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                        {TIME_SLOTS.map((slot) => {
-                          const isSelected = slot === selectedTime
+                        {daySlots.map((slot) => {
+                          const isSelected = slot.time === selectedTime
                           return (
                             <button
                               type="button"
-                              key={slot}
-                              onClick={() => setSelectedTime(slot)}
+                              key={slot.time}
+                              disabled={!slot.available}
+                              title={
+                                slot.available
+                                  ? undefined
+                                  : slot.reason === 'conflict'
+                                    ? 'Créneau déjà réservé'
+                                    : 'Hors horaires ou trop proche de l\'heure actuelle'
+                              }
+                              onClick={() => setSelectedTime(slot.time)}
                               className={`rounded-lg py-2 text-center text-xs font-medium transition ${
                                 isSelected
                                   ? 'bg-[#202321] text-white font-bold'
-                                  : 'bg-white border border-[#e4e1d8] text-[#555a53] hover:border-[#bd664a]'
+                                  : !slot.available
+                                    ? 'cursor-not-allowed bg-[#f1efea] text-[#b6b8b2] line-through'
+                                    : 'bg-white border border-[#e4e1d8] text-[#555a53] hover:border-[#bd664a]'
                               }`}
                             >
-                              {slot}
+                              {slot.time}
                             </button>
                           )
                         })}
                       </div>
+                      {slotSummary.allBooked && (
+                        <p className="mt-2 text-[11px] font-semibold text-[#bd664a]">
+                          Complet pour ce barbier à cette date — essayez « Premier disponible » ou un autre jour.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -710,7 +775,7 @@ export function BookingModal({
                     <div className="flex justify-between pt-1 text-sm font-bold text-[#202321]">
                       <span>Total à régler sur place</span>
                       <span className="text-[#d47b59]">
-                        {(activeService?.price ?? 0).toLocaleString('fr-FR')} FCFA
+                        {formatPrice(activeService?.price ?? 0, salon)}
                       </span>
                     </div>
                   </div>

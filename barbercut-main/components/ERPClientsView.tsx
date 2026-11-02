@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPrice } from '@/lib/locale'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -145,7 +146,7 @@ export function ERPClientsView({
         <div className="rounded-2xl border border-[#e9e6df] bg-white p-4">
           <span className="text-[11px] text-[#92958f]">Dépense moyenne / client</span>
           <div className="mt-1 font-serif text-2xl font-bold text-[#202321]">
-            {avgBasket.toLocaleString('fr-FR')} F
+            {formatPrice(avgBasket, salon)}
           </div>
           <p className="mt-1 text-[10px] text-[#79906f]">Valeur client cumulée</p>
         </div>
@@ -317,7 +318,7 @@ export function ERPClientsView({
                     <div className="flex justify-between">
                       <span className="text-[#898e85]">Dépenses cumulées :</span>
                       <strong className="font-serif font-bold text-[#bd664a]">
-                        {client.totalSpent.toLocaleString('fr-FR')} FCFA
+                        {formatPrice(client.totalSpent, salon)}
                       </strong>
                     </div>
                   </div>
@@ -474,7 +475,7 @@ export function ERPClientsView({
                 >
                   {salon.services.map((s) => (
                     <option key={s.id} value={s.name}>
-                      {s.name} ({s.price.toLocaleString('fr-FR')} F)
+                      {s.name} ({formatPrice(s.price, salon)})
                     </option>
                   ))}
                 </select>
@@ -567,7 +568,7 @@ export function ERPClientsView({
                 <div className="rounded-xl bg-white p-3 border border-[#e8e4dc]">
                   <span className="text-[#8c9089] block">Total dépensé</span>
                   <strong className="font-serif text-base text-[#bd664a]">
-                    {selectedClientDetails.totalSpent.toLocaleString('fr-FR')} FCFA
+                    {formatPrice(selectedClientDetails.totalSpent, salon)}
                   </strong>
                 </div>
               </div>
