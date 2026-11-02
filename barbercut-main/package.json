@@ -10,6 +10,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run build",
+    "check:migrations": "node scripts/check-migrations.js",
+    "db:push": "supabase db push",
     "clean": "rm -rf .next tsconfig.tsbuildinfo"
   },
   "dependencies": {
