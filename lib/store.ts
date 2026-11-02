@@ -77,6 +77,40 @@ export interface Salon {
   whatsappConfirmationEnabled?: boolean
   latitude?: number
   longitude?: number
+  subscription?: SalonSubscription
+}
+
+export type StaffRole = 'admin' | 'coiffeur' | 'receptionniste'
+
+export interface StaffPermissions {
+  canEditPrices: boolean
+  canViewReports: boolean
+  canManageClients: boolean
+  canManageStaff: boolean
+  canPublishVitrine: boolean
+}
+
+export interface SalonSubscription {
+  plan: 'gratuit' | 'pro'
+  status: 'active' | 'trial' | 'expired' | 'cancelled'
+  trialEndsAt?: string // ISO date
+  billingCycleStart?: string
+  billingCycleEnd?: string
+  priceFcfa: number // 0 gratuit / 35000 pro
+  paymentMethod?: 'cash' | 'wave' | 'orange_money' | 'card'
+  lastPaymentAt?: string
+  nextPaymentAt?: string
+}
+
+export interface TeamInvitation {
+  id: string
+  salonId: string
+  email: string
+  role: StaffRole
+  status: 'pending' | 'accepted' | 'declined'
+  invitedBy: string
+  invitedAt: string
+  respondedAt?: string
 }
 
 export interface SalonReview {
@@ -132,6 +166,50 @@ const STORAGE_KEYS = {
   CLIENT_ACCOUNTS: 'barbercuts_client_accounts_v1',
   ACTIVE_SALON_ID: 'barbercuts_active_salon_id_v1',
   CLIENT_SESSION: 'barbercuts_client_session_v1',
+  SUBSCRIPTIONS: 'barbercuts_subscriptions_v1',
+  TEAM_INVITATIONS: 'barbercuts_team_invitations_v1',
+}
+
+export function getStoredSubscriptions(): Record<string, SalonSubscription> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUBSCRIPTIONS)
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
+export function saveStoredSubscriptions(data: Record<string, SalonSubscription>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEYS.SUBSCRIPTIONS, JSON.stringify(data))
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving subscriptions', e)
+  }
+}
+
+export function getStoredTeamInvitations(): TeamInvitation[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.TEAM_INVITATIONS)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+export function saveStoredTeamInvitations(invitations: TeamInvitation[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEYS.TEAM_INVITATIONS, JSON.stringify(invitations))
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving team invitations', e)
+  }
 }
 
 export function getStoredClientAccounts(): ClientAccount[] {
@@ -697,6 +775,8 @@ export function useSalonStore() {
   const [reviews, setReviews] = useState<SalonReview[]>([])
   const [clientAccounts, setClientAccounts] = useState<ClientAccount[]>([])
   const [clientAccount, setClientAccount] = useState<ClientAccount | null>(null)
+  const [subscriptions, setSubscriptions] = useState<Record<string, SalonSubscription>>({})
+  const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([])
   const [activeSalonId, setActiveSalonId] = useState<string>('barber-cuts-cocody')
   const [isLoaded, setIsLoaded] = useState(false)
 
@@ -706,11 +786,15 @@ export function useSalonStore() {
     const c = getStoredClients()
     const r = getStoredReviews()
     const ca = getStoredClientAccounts()
+    const sub = getStoredSubscriptions()
+    const inv = getStoredTeamInvitations()
     setSalons(s)
     setAppointments(a)
     setClients(c)
     setReviews(r)
     setClientAccounts(ca)
+    setSubscriptions(sub)
+    setTeamInvitations(inv)
     // Restaurer la session client si existante
     const session = getClientSession()
     if (session) setClientAccount(session)
@@ -913,6 +997,167 @@ export function useSalonStore() {
     saveClientSession(null)
   }
 
+  // ── Abonnements ──
+  const getSubscription = (salonId: string): SalonSubscription | null => {
+    return subscriptions[salonId] || null
+  }
+
+  const setSubscription = (salonId: string, sub: SalonSubscription) => {
+    const next = { ...subscriptions, [salonId]: sub }
+    setSubscriptions(next)
+    saveStoredSubscriptions(next)
+  }
+
+  const upgradeToPro = (salonId: string, paymentMethod: 'wave' | 'orange_money' | 'card') => {
+    const now = new Date()
+    const nextPayment = new Date(now)
+    nextPayment.setMonth(nextPayment.getMonth() + 1)
+
+    const sub: SalonSubscription = {
+      plan: 'pro',
+      status: 'active',
+      priceFcfa: 35000,
+      paymentMethod,
+      billingCycleStart: now.toISOString(),
+      billingCycleEnd: nextPayment.toISOString(),
+      lastPaymentAt: now.toISOString(),
+      nextPaymentAt: nextPayment.toISOString(),
+    }
+    setSubscription(salonId, sub)
+
+    // Mettre à jour le salon avec l'abonnement
+    const targetSalon = salons.find((s) => s.id === salonId)
+    if (targetSalon) {
+      updateSalon({ ...targetSalon, subscription: sub })
+    }
+    return sub
+  }
+
+  const startFreeTrial = (salonId: string) => {
+    const now = new Date()
+    const trialEnd = new Date(now)
+    trialEnd.setDate(trialEnd.getDate() + 14)
+
+    const sub: SalonSubscription = {
+      plan: 'pro',
+      status: 'trial',
+      priceFcfa: 35000,
+      trialEndsAt: trialEnd.toISOString(),
+      billingCycleStart: now.toISOString(),
+      billingCycleEnd: trialEnd.toISOString(),
+    }
+    setSubscription(salonId, sub)
+
+    const targetSalon = salons.find((s) => s.id === salonId)
+    if (targetSalon) {
+      updateSalon({ ...targetSalon, subscription: sub })
+    }
+    return sub
+  }
+
+  const cancelSubscription = (salonId: string) => {
+    const sub = subscriptions[salonId]
+    if (!sub) return
+    const next: SalonSubscription = { ...sub, status: 'cancelled' }
+    setSubscription(salonId, next)
+    return next
+  }
+
+  // ── Invitations d'équipe ──
+  const inviteTeamMember = (data: {
+    salonId: string
+    email: string
+    role: StaffRole
+    invitedBy: string
+  }) => {
+    const existing = teamInvitations.find(
+      (inv) => inv.salonId === data.salonId && inv.email === data.email && inv.status === 'pending'
+    )
+    if (existing) {
+      throw new Error('Une invitation en attente existe déjà pour cet email.')
+    }
+
+    const invitation: TeamInvitation = {
+      id: 'inv-' + Date.now(),
+      salonId: data.salonId,
+      email: data.email,
+      role: data.role,
+      status: 'pending',
+      invitedBy: data.invitedBy,
+      invitedAt: new Date().toISOString(),
+    }
+    const next = [...teamInvitations, invitation]
+    setTeamInvitations(next)
+    saveStoredTeamInvitations(next)
+    return invitation
+  }
+
+  const respondToInvitation = (invitationId: string, response: 'accepted' | 'declined') => {
+    const next = teamInvitations.map((inv) =>
+      inv.id === invitationId
+        ? { ...inv, status: response, respondedAt: new Date().toISOString() }
+        : inv
+    )
+    setTeamInvitations(next)
+    saveStoredTeamInvitations(next)
+
+    // Si accepté, ajouter le collaborateur au staff du salon
+    if (response === 'accepted') {
+      const inv = teamInvitations.find((i) => i.id === invitationId)
+      if (inv) {
+        const targetSalon = salons.find((s) => s.id === inv.salonId)
+        if (targetSalon) {
+          const roleMap: Record<StaffRole, string> = {
+            admin: 'Gérant / Admin',
+            coiffeur: 'Coiffeur / Barbier',
+            receptionniste: 'Réceptionniste',
+          }
+          const permissionMap: Record<StaffRole, StaffPermissions> = {
+            admin: {
+              canEditPrices: true,
+              canViewReports: true,
+              canManageClients: true,
+              canManageStaff: true,
+              canPublishVitrine: true,
+            },
+            coiffeur: {
+              canEditPrices: false,
+              canViewReports: false,
+              canManageClients: true,
+              canManageStaff: false,
+              canPublishVitrine: false,
+            },
+            receptionniste: {
+              canEditPrices: false,
+              canViewReports: false,
+              canManageClients: true,
+              canManageStaff: false,
+              canPublishVitrine: false,
+            },
+          }
+          const newStaff: StaffMember = {
+            id: 'staff-' + Date.now(),
+            name: inv.email.split('@')[0], // Nom temporaire basé sur l'email
+            role: roleMap[inv.role],
+            initials: inv.email.split('@')[0].slice(0, 2).toUpperCase(),
+            color: 'bg-[#586b83]',
+            specialty: '',
+            phone: '',
+            status: 'active',
+            schedule: 'Mar - Dim (08:30 - 18:30)',
+          }
+          const exists = targetSalon.staff.some((s) => s.id === newStaff.id)
+          if (!exists) {
+            updateSalon({
+              ...targetSalon,
+              staff: [...targetSalon.staff, newStaff],
+            })
+          }
+        }
+      }
+    }
+  }
+
   // Add / Edit Staff member in current salon
   const saveStaffMember = (staff: StaffMember) => {
     const exists = currentSalon.staff.some((s) => s.id === staff.id)
@@ -1001,6 +1246,8 @@ export function useSalonStore() {
     clients,
     clientAccounts,
     clientAccount,
+    subscriptions,
+    teamInvitations,
     reviews,
     isLoaded,
     updateSalon,
@@ -1015,6 +1262,13 @@ export function useSalonStore() {
     registerClient,
     loginClient,
     logoutClient,
+    getSubscription,
+    setSubscription,
+    upgradeToPro,
+    startFreeTrial,
+    cancelSubscription,
+    inviteTeamMember,
+    respondToInvitation,
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

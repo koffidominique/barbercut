@@ -11,6 +11,8 @@ import type {
   ShowcasePhoto,
   SalonReview,
   ClientAccount,
+  SalonSubscription,
+  TeamInvitation,
 } from '@/lib/store'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -594,6 +596,8 @@ export function useSupabaseSalonStore() {
     clients,
     clientAccounts: [] as ClientAccount[],
     clientAccount: null,
+    subscriptions: {} as Record<string, SalonSubscription>,
+    teamInvitations: [] as TeamInvitation[],
     isLoaded,
     updateSalon,
     createSalon,
@@ -608,6 +612,13 @@ export function useSupabaseSalonStore() {
     registerClient: () => { throw new Error('Non disponible avec Supabase') },
     loginClient: () => { throw new Error('Non disponible avec Supabase') },
     logoutClient: () => {},
+    getSubscription: () => null,
+    setSubscription: () => {},
+    upgradeToPro: () => { throw new Error('Non disponible avec Supabase') },
+    startFreeTrial: () => { throw new Error('Non disponible avec Supabase') },
+    cancelSubscription: () => null,
+    inviteTeamMember: () => { throw new Error('Non disponible avec Supabase') },
+    respondToInvitation: () => {},
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

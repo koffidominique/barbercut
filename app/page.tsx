@@ -40,6 +40,8 @@ import { ERPServicesView } from '@/components/ERPServicesView'
 import { ERPTeamView } from '@/components/ERPTeamView'
 import { ERPReportsView } from '@/components/ERPReportsView'
 import { ERPSettingsView } from '@/components/ERPSettingsView'
+import { ERPAnalyticsView } from '@/components/ERPAnalyticsView'
+import { ERPSubscriptionView } from '@/components/ERPSubscriptionView'
 import { WeeklyRevenueChart } from '@/components/WeeklyRevenueChart'
 import { MarketplaceView } from '@/components/MarketplaceView'
 
@@ -291,6 +293,40 @@ export default function Page() {
             <span className="flex items-center gap-3">
               <TrendingUp size={17} strokeWidth={1.8} />
               Rapports
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveNav('Analytics')
+              setMobileOpen(false)
+            }}
+            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[13px] font-medium transition ${
+              activeNav === 'Analytics'
+                ? 'bg-[#efe9df] text-[#202321] font-semibold'
+                : 'text-[#747873] hover:bg-[#f1efea] hover:text-[#202321]'
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <TrendingUp size={17} strokeWidth={1.8} />
+              Analytics
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveNav('Abonnement')
+              setMobileOpen(false)
+            }}
+            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[13px] font-medium transition ${
+              activeNav === 'Abonnement'
+                ? 'bg-[#efe9df] text-[#202321] font-semibold'
+                : 'text-[#747873] hover:bg-[#f1efea] hover:text-[#202321]'
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <WalletCards size={17} strokeWidth={1.8} />
+              Abonnement
             </span>
           </button>
 
@@ -767,7 +803,21 @@ export default function Page() {
             />
           )}
 
-          {/* TAB 8: PARAMETRES */}
+          {/* TAB 8: ANALYTICS AVANCÉS */}
+          {activeNav === 'Analytics' && (
+            <ERPAnalyticsView
+              salon={currentSalon}
+              appointments={appointments}
+              staff={currentSalon.staff}
+            />
+          )}
+
+          {/* TAB 9: ABONNEMENT */}
+          {activeNav === 'Abonnement' && (
+            <ERPSubscriptionView salon={currentSalon} />
+          )}
+
+          {/* TAB 10: PARAMETRES */}
           {activeNav === 'Paramètres' && (
             <ERPSettingsView
               salon={currentSalon}
