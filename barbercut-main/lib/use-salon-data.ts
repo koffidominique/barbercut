@@ -5,13 +5,17 @@ import type {
   Appointment,
   Salon,
   SalonClient,
+  SalonReview,
   SalonService,
+  SalonSubscription,
   ShowcasePhoto,
   StaffMember,
+  TeamInvitation,
 } from "@/lib/types";
 import { getStoredActiveSalonId, saveStoredActiveSalonId } from "@/lib/storage";
 import {
   IS_CONFIGURED,
+  REALTIME_TABLES,
   SIGNATURE_PREFIX,
   createSupabaseBrowserClient,
   signature,
@@ -21,9 +25,12 @@ import {
   mapAppointmentRow,
   mapClientRow,
   mapPhotoRow,
+  mapReviewRow,
   mapSalonRow,
   mapServiceRow,
   mapStaffRow,
+  mapSubscriptionRow,
+  mapTeamInvitationRow,
   photoPayload,
   servicePayload,
 } from "@/lib/supabase-mappers";
@@ -50,6 +57,12 @@ export interface SalonDataState {
   setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
   clients: SalonClient[];
   setClients: React.Dispatch<React.SetStateAction<SalonClient[]>>;
+  /** Avis du salon actif (P2 : persistés en base, plus en localStorage). */
+  reviews: SalonReview[];
+  /** Abonnement du salon actif (P2 : upserté dans `salon_subscriptions`). */
+  subscription: SalonSubscription | null;
+  /** Invitations émises par le salon actif (P2 : table `team_invitations`). */
+  teamInvitations: TeamInvitation[];
   activeSalonId: string;
   setActiveSalonId: (id: string) => void;
   isLoaded: boolean;
@@ -68,6 +81,9 @@ export function useSalonData(): SalonDataState {
   const [salons, setSalons] = useState<Salon[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<SalonClient[]>([]);
+  const [reviews, setReviews] = useState<SalonReview[]>([]);
+  const [subscription, setSubscription] = useState<SalonSubscription | null>(null);
+  const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([]);
   const [activeSalonId, setActiveSalonIdRaw] = useState<string>("");
 
   /** Changer de salon actif = changer de périmètre multi-tenant : on persiste
@@ -97,6 +113,9 @@ export function useSalonData(): SalonDataState {
         setSalons([]);
         setAppointments([]);
         setClients([]);
+        setReviews([]);
+        setSubscription(null);
+        setTeamInvitations([]);
         setIsLoaded(true);
         return;
       }
@@ -108,6 +127,9 @@ export function useSalonData(): SalonDataState {
         { data: servicesData },
         { data: staffData },
         { data: photosData },
+        { data: reviewsData },
+        { data: subscriptionData },
+        { data: invitationsData },
       ] = await Promise.all([
         supabase
           .from("salons")
@@ -139,6 +161,22 @@ export function useSalonData(): SalonDataState {
           .select("*")
           .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: true }),
+        // P2 — collections jadis confinées au localStorage.
+        supabase
+          .from("salon_reviews")
+          .select("*")
+          .eq("salon_id", scopedSalonId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("salon_subscriptions")
+          .select("*")
+          .eq("salon_id", scopedSalonId)
+          .maybeSingle(),
+        supabase
+          .from("team_invitations")
+          .select("*")
+          .eq("salon_id", scopedSalonId)
+          .order("created_at", { ascending: false }),
       ]);
 
       if (salonsError) {
@@ -208,6 +246,13 @@ export function useSalonData(): SalonDataState {
         setClients(clientsData.map(mapClientRow));
       }
 
+      // P2 — les tables peuvent être absentes tant que la migration
+      // 20240104 n'est pas appliquée : on dégrade silencieusement vers
+      // des collections vides plutôt que de casser le chargement global.
+      setReviews((reviewsData || []).map(mapReviewRow));
+      setSubscription(subscriptionData ? mapSubscriptionRow(subscriptionData) : null);
+      setTeamInvitations((invitationsData || []).map(mapTeamInvitationRow));
+
       setIsLoaded(true);
     } catch (e) {
       console.error("Erreur chargement Supabase", e);
@@ -239,6 +284,9 @@ export function useSalonData(): SalonDataState {
     setAppointments,
     clients,
     setClients,
+    reviews,
+    subscription,
+    teamInvitations,
     activeSalonId,
     setActiveSalonId,
     isLoaded,

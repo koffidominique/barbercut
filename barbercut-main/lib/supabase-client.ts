@@ -54,6 +54,10 @@ export const REALTIME_TABLES = [
   "salon_services",
   "salon_staff",
   "showcase_photos",
+  // P2 — persistance base des collections autrefois locales.
+  "salon_reviews",
+  "salon_subscriptions",
+  "team_invitations",
 ] as const;
 
 /**

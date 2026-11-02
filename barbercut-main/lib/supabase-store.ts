@@ -20,15 +20,30 @@ import {
   clientColumnsPayload,
   mapClientRow,
   mapSalonRow,
+  reviewInsertPayload,
   salonUpdatePayload,
   servicePayload,
   staffColumnsPayload,
+  subscriptionUpsertPayload,
+  teamInvitationInsertPayload,
 } from "@/lib/supabase-mappers";
 import { useSalonData } from "@/lib/use-salon-data";
 import { syncSalonPhotos, syncSalonServices } from "@/lib/supabase-sync";
 
 /** Note affichée par défaut pour un membre d'équipe sans historique. */
 const DEFAULT_STAFF_RATING = 4.9;
+
+/** Prix de l'abonnement Pro (FCFA / mois) — miroir du store local. */
+const PRO_PRICE_FCFA = 35000;
+/** Durée de l'essai gratuit (jours) — miroir du store local. */
+const TRIAL_DAYS = 14;
+
+/** Intitulés des rôles d'équipe (miroir du store local). */
+const ROLE_LABELS: Record<TeamInvitation["role"], string> = {
+  admin: "Gérant / Admin",
+  coiffeur: "Coiffeur / Barbier",
+  receptionniste: "Réceptionniste",
+};
 
 /** Colonnes communes à l'insertion d'un salon dans la table `salons`. */
 const SALON_INSERT_DEFAULTS = {
@@ -369,6 +384,196 @@ export function useSupabaseSalonStore() {
   );
 
   /* ------------------------------------------------------------------ */
+  /*  Avis clients (P2 — table `salon_reviews`)                         */
+  /* ------------------------------------------------------------------ */
+  /**
+   * L'insertion déclenche côté base le trigger `recompute_salon_rating` :
+   * la note moyenne et le compteur d'avis du salon sont recalculés en
+   * source, puis propagés au client par l'abonnement temps réel.
+   * Le calcul local du store localStorage n'est donc pas dupliqué ici.
+   */
+  const saveReview = useCallback(
+    async (review: Omit<SalonReview, "id" | "createdAt">) => {
+      if (!IS_CONFIGURED || !supabase) return;
+      try {
+        await unwrap(supabase.from("salon_reviews").insert(reviewInsertPayload(review)));
+      } catch (e) {
+        console.error("Erreur saveReview", e);
+      }
+    },
+    [supabase],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  Abonnements (P2 — table `salon_subscriptions`)                    */
+  /* ------------------------------------------------------------------ */
+  /** Écrit l'abonnement en base ; le temps réel recharge l'état côté UI. */
+  const persistSubscription = useCallback(
+    async (salonId: string, sub: SalonSubscription) => {
+      if (!IS_CONFIGURED || !supabase || !salonId) return;
+      try {
+        await unwrap(
+          supabase
+            .from("salon_subscriptions")
+            .upsert(subscriptionUpsertPayload(salonId, sub), { onConflict: "salon_id" }),
+        );
+      } catch (e) {
+        console.error("Erreur persistance abonnement", e);
+      }
+    },
+    [supabase],
+  );
+
+  const setSubscription = useCallback(
+    (salonId: string, sub: SalonSubscription) => {
+      persistSubscription(salonId, sub);
+    },
+    [persistSubscription],
+  );
+
+  const getSubscription = useCallback(
+    (salonId: string): SalonSubscription | null =>
+      salonId === data.activeSalonId ? data.subscription : null,
+    [data.activeSalonId, data.subscription],
+  );
+
+  const upgradeToPro = useCallback(
+    (
+      salonId: string,
+      paymentMethod: "wave" | "orange_money" | "card",
+    ): SalonSubscription => {
+      const now = new Date();
+      const nextPayment = new Date(now);
+      nextPayment.setMonth(nextPayment.getMonth() + 1);
+      const sub: SalonSubscription = {
+        plan: "pro",
+        status: "active",
+        priceFcfa: PRO_PRICE_FCFA,
+        paymentMethod,
+        billingCycleStart: now.toISOString(),
+        billingCycleEnd: nextPayment.toISOString(),
+        lastPaymentAt: now.toISOString(),
+        nextPaymentAt: nextPayment.toISOString(),
+      };
+      persistSubscription(salonId, sub);
+      return sub;
+    },
+    [persistSubscription],
+  );
+
+  const startFreeTrial = useCallback(
+    (salonId: string): SalonSubscription => {
+      const now = new Date();
+      const trialEnd = new Date(now);
+      trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
+      const sub: SalonSubscription = {
+        plan: "pro",
+        status: "trial",
+        priceFcfa: PRO_PRICE_FCFA,
+        trialEndsAt: trialEnd.toISOString(),
+        billingCycleStart: now.toISOString(),
+        billingCycleEnd: trialEnd.toISOString(),
+      };
+      persistSubscription(salonId, sub);
+      return sub;
+    },
+    [persistSubscription],
+  );
+
+  const cancelSubscription = useCallback(
+    (salonId: string): SalonSubscription | null => {
+      const current = getSubscription(salonId);
+      if (!current) return null;
+      const next: SalonSubscription = { ...current, status: "cancelled" };
+      persistSubscription(salonId, next);
+      return next;
+    },
+    [getSubscription, persistSubscription],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  Invitations d'équipe (P2 — table `team_invitations`)              */
+  /* ------------------------------------------------------------------ */
+  const inviteTeamMember = useCallback(
+    (dataInput: {
+      salonId: string;
+      email: string;
+      role: TeamInvitation["role"];
+      invitedBy: string;
+    }): TeamInvitation => {
+      const existing = data.teamInvitations.find(
+        (inv) =>
+          inv.salonId === dataInput.salonId &&
+          inv.email === dataInput.email &&
+          inv.status === "pending",
+      );
+      if (existing) {
+        throw new Error("Une invitation en attente existe déjà pour cet email.");
+      }
+      const invitation: TeamInvitation = {
+        id: "inv-" + Date.now(),
+        salonId: dataInput.salonId,
+        email: dataInput.email,
+        role: dataInput.role,
+        status: "pending",
+        invitedBy: dataInput.invitedBy,
+        invitedAt: new Date().toISOString(),
+      };
+      if (IS_CONFIGURED && supabase) {
+        unwrap(
+          supabase
+            .from("team_invitations")
+            .insert(teamInvitationInsertPayload(invitation)),
+        ).catch((e) => console.error("Erreur inviteTeamMember", e));
+      }
+      return invitation;
+    },
+    [supabase, data.teamInvitations],
+  );
+
+  const respondToInvitation = useCallback(
+    async (invitationId: string, response: "accepted" | "declined") => {
+      if (!IS_CONFIGURED || !supabase) return;
+      const inv = data.teamInvitations.find((i) => i.id === invitationId);
+      try {
+        await unwrap(
+          supabase
+            .from("team_invitations")
+            .update({
+              status: response,
+              responded_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", invitationId),
+        );
+      } catch (e) {
+        console.error("Erreur respondToInvitation", e);
+        return;
+      }
+      // Si acceptée, ajouter le collaborateur au staff du salon
+      // (miroir du comportement du store local).
+      if (response === "accepted" && inv && currentSalon?.id === inv.salonId) {
+        const handle = inv.email.split("@")[0];
+        const newStaff: StaffMember = {
+          id: "staff-" + Date.now(),
+          name: handle,
+          role: ROLE_LABELS[inv.role],
+          initials: handle.slice(0, 2).toUpperCase(),
+          color: "bg-[#586b83]",
+          specialty: "",
+          phone: "",
+          status: "active",
+          schedule: "Mar - Dim (08:30 - 18:30)",
+        };
+        if (!currentSalon.staff.some((s) => s.id === newStaff.id)) {
+          saveStaffMember(newStaff);
+        }
+      }
+    },
+    [supabase, data.teamInvitations, currentSalon, saveStaffMember],
+  );
+
+  /* ------------------------------------------------------------------ */
   /*  Reset                                                             */
   /* ------------------------------------------------------------------ */
   const resetDefaults = useCallback(async () => {
@@ -376,6 +581,8 @@ export function useSupabaseSalonStore() {
     // Réinitialisation : supprimer toutes les données du salon actif
     if (data.activeSalonId) {
       for (const table of [
+        "salon_reviews",
+        "team_invitations",
         "appointments",
         "salon_clients",
         "salon_staff",
@@ -399,11 +606,18 @@ export function useSupabaseSalonStore() {
     setActiveSalonId: data.setActiveSalonId,
     appointments: data.appointments,
     clients,
-    // Fonctionnalités réservées au mode local (non disponibles via Supabase).
+    // P2 — comptes clients : la persistance base (`client_accounts`) est
+    // couverte par la migration 20240104 ; le flux d'authentification client
+    // reste à brancher (P3), le store renvoie un état vide explicite.
     clientAccounts: [] as ClientAccount[],
     clientAccount: null,
-    subscriptions: {} as Record<string, SalonSubscription>,
-    teamInvitations: [] as TeamInvitation[],
+    subscriptions: data.subscription
+      ? ({ [data.activeSalonId]: data.subscription } as Record<
+          string,
+          SalonSubscription
+        >)
+      : ({} as Record<string, SalonSubscription>),
+    teamInvitations: data.teamInvitations,
     offlineQueue: [] as OfflineAction[],
     isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
     isLoaded: data.isLoaded,
@@ -415,8 +629,8 @@ export function useSupabaseSalonStore() {
     updateAppointmentPayment,
     saveClient,
     deleteClient,
-    reviews: [] as SalonReview[],
-    saveReview: () => {},
+    reviews: data.reviews,
+    saveReview,
     registerClient: () => {
       throw new Error("Non disponible avec Supabase");
     },
@@ -424,19 +638,13 @@ export function useSupabaseSalonStore() {
       throw new Error("Non disponible avec Supabase");
     },
     logoutClient: () => {},
-    getSubscription: () => null,
-    setSubscription: () => {},
-    upgradeToPro: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    startFreeTrial: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    cancelSubscription: () => null,
-    inviteTeamMember: () => {
-      throw new Error("Non disponible avec Supabase");
-    },
-    respondToInvitation: () => {},
+    getSubscription,
+    setSubscription,
+    upgradeToPro,
+    startFreeTrial,
+    cancelSubscription,
+    inviteTeamMember,
+    respondToInvitation,
     syncOfflineQueue: async () => {},
     saveStaffMember,
     deleteStaffMember,

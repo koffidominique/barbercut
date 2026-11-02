@@ -7,11 +7,15 @@ import type {
   Appointment,
   Salon,
   SalonClient,
+  SalonReview,
   SalonService,
+  SalonSubscription,
   ShowcasePhoto,
   StaffMember,
+  TeamInvitation,
 } from "@/lib/types";
 import { toCoordinate } from "@/lib/types";
+import { isPersistedId } from "@/lib/supabase-client";
 
 /* ------------------------------------------------------------------ */
 /*  Modèles -> payload base de données                                */
@@ -249,5 +253,112 @@ export function staffColumnsPayload(staff: StaffMember) {
     reviews_count: staff.reviewsCount,
     appointments_count: staff.appointmentsCount,
     status: staff.status || "active",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  P2 — Avis clients (table `salon_reviews`)                          */
+/* ------------------------------------------------------------------ */
+
+/** Ligne `salon_reviews` -> modèle SalonReview. */
+export function mapReviewRow(row: any): SalonReview {
+  return {
+    id: row.id,
+    salonId: row.salon_id,
+    clientName: row.client_name || "",
+    clientPhone: row.client_phone || undefined,
+    rating: Number(row.rating || 0),
+    comment: row.comment || "",
+    date: row.review_date || row.date || row.created_at,
+    createdAt: row.created_at,
+    source: row.source === "marketplace" ? "marketplace" : "direct",
+  };
+}
+
+/** Modèle SalonReview -> colonnes d'insertion `salon_reviews`. */
+export function reviewInsertPayload(review: Omit<SalonReview, "id" | "createdAt">) {
+  const timestamp = review.date || new Date().toISOString();
+  return {
+    salon_id: review.salonId,
+    client_name: review.clientName,
+    client_phone: review.clientPhone ?? null,
+    rating: Math.round(Number(review.rating)) || 1,
+    comment: review.comment || "",
+    // `date` est la colonne historique, `review_date` la colonne canonique
+    // (migration P2) : on écrit les deux pour rester compatible.
+    date: timestamp,
+    review_date: timestamp,
+    source: review.source,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  P2 — Invitations d'équipe (table `team_invitations`)               */
+/* ------------------------------------------------------------------ */
+
+/** Ligne `team_invitations` -> modèle TeamInvitation. */
+export function mapTeamInvitationRow(row: any): TeamInvitation {
+  return {
+    id: row.id,
+    salonId: row.salon_id,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    invitedBy: row.invited_by || "",
+    invitedAt: row.created_at,
+    respondedAt: row.responded_at || undefined,
+  };
+}
+
+/** Modèle TeamInvitation -> colonnes d'insertion `team_invitations`. */
+export function teamInvitationInsertPayload(invitation: TeamInvitation) {
+  return {
+    salon_id: invitation.salonId,
+    email: invitation.email,
+    role: invitation.role,
+    invited_by: isPersistedId(invitation.invitedBy)
+      ? invitation.invitedBy
+      : null,
+    status: invitation.status,
+    responded_at: invitation.respondedAt ?? null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  P2 — Abonnements (table `salon_subscriptions`)                     */
+/* ------------------------------------------------------------------ */
+
+/** Ligne `salon_subscriptions` -> modèle SalonSubscription. */
+export function mapSubscriptionRow(row: any): SalonSubscription {
+  return {
+    plan: row.plan === "pro" ? "pro" : "gratuit",
+    status: row.status,
+    priceFcfa: Number(row.price_fcfa || 0),
+    trialEndsAt: row.trial_ends_at || undefined,
+    billingCycleStart: row.billing_cycle_start || undefined,
+    billingCycleEnd: row.billing_cycle_end || undefined,
+    paymentMethod: row.payment_method || undefined,
+    lastPaymentAt: row.last_payment_at || undefined,
+    nextPaymentAt: row.next_payment_at || undefined,
+  };
+}
+
+/** Modèle SalonSubscription -> payload upsert `salon_subscriptions`. */
+export function subscriptionUpsertPayload(
+  salonId: string,
+  subscription: SalonSubscription,
+) {
+  return {
+    salon_id: salonId,
+    plan: subscription.plan,
+    status: subscription.status,
+    price_fcfa: subscription.priceFcfa,
+    trial_ends_at: subscription.trialEndsAt ?? null,
+    billing_cycle_start: subscription.billingCycleStart ?? null,
+    billing_cycle_end: subscription.billingCycleEnd ?? null,
+    payment_method: subscription.paymentMethod ?? null,
+    last_payment_at: subscription.lastPaymentAt ?? null,
+    next_payment_at: subscription.nextPaymentAt ?? null,
+    updated_at: new Date().toISOString(),
   };
 }
