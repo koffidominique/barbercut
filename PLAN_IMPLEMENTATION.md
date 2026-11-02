@@ -147,19 +147,19 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 **Objectif :** Développer la face publique pour attirer et convertir des clients.
 
 #### 3.1 Découverte & Recherche
-- [ ] Barre de recherche globale (nom salon, prestation, quartier)
-- [ ] Filtres avancés : prix, note, disponibilité jour/heure, catégorie
-- [ ] Tri : mieux noté, moins cher, plus proche, nouveautés
+- [x] Barre de recherche globale (nom salon, prestation, quartier)
+- [x] Filtres avancés : prix, note, disponibilité jour/heure, catégorie
+- [x] Tri : mieux noté, moins cher, plus proche, nouveautés
 - [ ] Carte interactive (intégration Leaflet ou Google Maps avec les salons d'Abidjan)
 
 #### 3.2 Fiche salon publique enrichie
-- [ ] Page dédiée `/salon/[id]` avec SEO (meta tags dynamiques)
-- [ ] Avis & notes clients (système de notation 1-5 étoiles + commentaire)
+- [x] Page dédiée `/salon/[id]` avec SEO (meta tags dynamiques)
+- [x] Avis & notes clients (système de notation 1-5 étoiles + commentaire)
 - [ ] Galerie photo en plein écran avec navigation (lightbox déjà existante — l'améliorer)
-- <|open|>argument key="text" type="string"<|sep|>Bouton "Réserver" conduisant au BookingModal (déjà existant)
+- [x] Bouton "Réserver" conduisant au BookingModal (déjà existant)
 
 #### 3.3 Réservation client simplifiée
-- [ ] Flow de réservation en 3 étapes (salon → prestation/créneau → confirmation)
+- [x] Flow de réservation en 3 étapes (salon → prestation/créneau → confirmation)
 - [ ] Création de compte client optionnelle (réservation en tant qu'invité possible)
 - [ ] Email/SMS de confirmation de réservation
 - [ ] Page "Mes rendez-vous" côté client (historique et annulation)
