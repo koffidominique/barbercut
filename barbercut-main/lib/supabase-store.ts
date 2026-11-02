@@ -14,12 +14,12 @@ import type {
   TeamInvitation,
 } from "@/lib/types";
 import { EMPTY_SALON, toCoordinate } from "@/lib/types";
-import { saveStoredActiveSalonId } from "@/lib/storage";
 import { IS_CONFIGURED, unwrap } from "@/lib/supabase-client";
 import {
   appointmentInsertPayload,
   clientColumnsPayload,
   mapClientRow,
+  mapSalonRow,
   salonUpdatePayload,
   servicePayload,
   staffColumnsPayload,
@@ -49,7 +49,7 @@ const SALON_INSERT_DEFAULTS = {
  */
 export function useSupabaseSalonStore() {
   const data = useSalonData();
-  const { supabase, salons, setSalons, clients, setClients } = data;
+  const { supabase, salons, clients, setClients } = data;
 
   /* ------------------------------------------------------------------ */
   /*  Salons                                                            */
@@ -163,15 +163,16 @@ export function useSupabaseSalonStore() {
         }
 
         const salon: Salon = {
-          ...mapSalonFromRow(row),
+          ...mapSalonRow(row),
           latitude: toCoordinate(row.latitude) ?? latitude,
           longitude: toCoordinate(row.longitude) ?? longitude,
           services,
         };
 
-        setSalons((prev) => [salon, ...prev]);
+        // Le périmètre multi-tenant bascule immédiatement sur le salon créé :
+        // setActiveSalonId persiste le choix et relit les données du nouveau
+        // salon (et non plus `salons` localement, qui serait écrasé par ce reload).
         data.setActiveSalonId(salon.id);
-        saveStoredActiveSalonId(salon.id);
 
         return salon;
       } catch (e) {
@@ -179,7 +180,7 @@ export function useSupabaseSalonStore() {
         return null;
       }
     },
-    [supabase, setSalons, data],
+    [supabase, data],
   );
 
   /* ------------------------------------------------------------------ */
@@ -441,35 +442,5 @@ export function useSupabaseSalonStore() {
     deleteStaffMember,
     resetDefaults,
     isSupabaseConfigured: IS_CONFIGURED,
-  };
-}
-
-/** Ligne `salons` fraîchement insérée -> modèle Salon (collections vides). */
-function mapSalonFromRow(row: any): Salon {
-  return {
-    id: row.id,
-    name: row.name,
-    tagline: row.tagline,
-    description: row.description,
-    city: row.city,
-    neighborhood: row.neighborhood,
-    address: row.address,
-    phone: row.phone,
-    whatsapp: row.whatsapp,
-    rating: Number(row.rating || 0),
-    reviewsCount: row.reviews_count || 0,
-    isPublished: row.is_published ?? false,
-    coverImage: row.cover_image,
-    openingHours: row.opening_hours,
-    rccm: row.rccm || undefined,
-    currency: row.currency || "FCFA",
-    smsRemindersEnabled: row.sms_reminders_enabled ?? true,
-    whatsappConfirmationEnabled: row.whatsapp_confirmation_enabled ?? true,
-    latitude: toCoordinate(row.latitude),
-    longitude: toCoordinate(row.longitude),
-    features: [],
-    gallery: [],
-    services: [],
-    staff: [],
   };
 }

@@ -9,7 +9,7 @@ import type {
   ShowcasePhoto,
   StaffMember,
 } from "@/lib/types";
-import { getStoredActiveSalonId } from "@/lib/storage";
+import { getStoredActiveSalonId, saveStoredActiveSalonId } from "@/lib/storage";
 import {
   IS_CONFIGURED,
   SIGNATURE_PREFIX,
@@ -68,7 +68,14 @@ export function useSalonData(): SalonDataState {
   const [salons, setSalons] = useState<Salon[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<SalonClient[]>([]);
-  const [activeSalonId, setActiveSalonId] = useState<string>("");
+  const [activeSalonId, setActiveSalonIdRaw] = useState<string>("");
+
+  /** Changer de salon actif = changer de périmètre multi-tenant : on persiste
+   *  le choix et on relit les données du nouveau salon. */
+  const setActiveSalonId = useCallback((id: string) => {
+    setActiveSalonIdRaw(id);
+    saveStoredActiveSalonId(id);
+  }, []);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Un seul client par montage : une nouvelle instance à chaque rendu relançait
@@ -81,6 +88,19 @@ export function useSalonData(): SalonDataState {
   const loadData = useCallback(async () => {
     if (!supabase) return;
     try {
+      // Multi-tenant : le périmètre de travail est le salon actif.
+      // Sans lui, on ne charge rien — les requêtes non filtrées retournaient
+      // autrefois toutes les lignes visibles pour la session, y compris celles
+      // d'autres salons en cas de mauvaise configuration RLS.
+      const scopedSalonId = activeSalonId || getStoredActiveSalonId();
+      if (!scopedSalonId) {
+        setSalons([]);
+        setAppointments([]);
+        setClients([]);
+        setIsLoaded(true);
+        return;
+      }
+
       const [
         { data: salonsData, error: salonsError },
         { data: aptsData },
@@ -92,31 +112,51 @@ export function useSalonData(): SalonDataState {
         supabase
           .from("salons")
           .select("*")
-          .order("created_at", { ascending: false }),
+          .eq("id", scopedSalonId)
+          .maybeSingle(),
         supabase
           .from("appointments")
           .select("*")
+          .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: false }),
         supabase
           .from("salon_clients")
           .select("*")
+          .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: false }),
         supabase
           .from("salon_services")
           .select("*")
+          .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: true }),
         supabase
           .from("salon_staff")
           .select("*")
+          .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: true }),
         supabase
           .from("showcase_photos")
           .select("*")
+          .eq("salon_id", scopedSalonId)
           .order("created_at", { ascending: true }),
       ]);
 
       if (salonsError) {
         console.error("Erreur chargement des salons", salonsError);
+      }
+
+      // Le salon demandé est invisible (supprimé, non publié, ou RLS) :
+      // on retombe sur un salon possédé par la session, sinon aucun.
+      let resolvedSalonRow: any = salonsData ?? null;
+      if (!resolvedSalonRow) {
+        const { data: fallback } = await supabase
+          .from("salons")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        resolvedSalonRow = fallback ?? null;
+        if (fallback) setActiveSalonId(fallback.id);
       }
 
       const servicesBySalon = groupBySalon(servicesData);
@@ -144,16 +184,20 @@ export function useSalonData(): SalonDataState {
         });
       signaturesRef.current = { ...signaturesRef.current, ...nextSignatures };
 
-      if (salonsData) {
-        setSalons(
-          salonsData.map((s) =>
-            mapSalonRow(s, {
-              services: (servicesBySalon[s.id] || []).map(mapServiceRow),
-              staff: (staffBySalon[s.id] || []).map(mapStaffRow),
-              gallery: (photosBySalon[s.id] || []).map(mapPhotoRow),
-            }),
-          ),
-        );
+      if (resolvedSalonRow) {
+        const scopedId = resolvedSalonRow.id;
+        setSalons([
+          mapSalonRow(resolvedSalonRow, {
+            services: (servicesBySalon[scopedId] || []).map(mapServiceRow),
+            staff: (staffBySalon[scopedId] || []).map(mapStaffRow),
+            gallery: (photosBySalon[scopedId] || []).map(mapPhotoRow),
+          }),
+        ]);
+        // Le salon résolu peut différer du salon demandé (repli) : on aligne
+        // le périmètre multi-tenant sur la réalité de la base.
+        if (scopedId !== activeSalonId) setActiveSalonId(scopedId);
+      } else {
+        setSalons([]);
       }
 
       if (aptsData) {
@@ -164,19 +208,12 @@ export function useSalonData(): SalonDataState {
         setClients(clientsData.map(mapClientRow));
       }
 
-      // Définir le salon actif (le premier ou celui stocké précédemment)
-      if (salonsData && salonsData.length > 0) {
-        const stored = getStoredActiveSalonId();
-        const found = salonsData.find((s) => s.id === stored);
-        setActiveSalonId(found ? found.id : salonsData[0].id);
-      }
-
       setIsLoaded(true);
     } catch (e) {
       console.error("Erreur chargement Supabase", e);
       setIsLoaded(true);
     }
-  }, [supabase]);
+  }, [supabase, activeSalonId]);
 
   useEffect(() => {
     if (!IS_CONFIGURED || !supabase) {
