@@ -15,8 +15,12 @@ import type {
   TeamInvitation,
   OfflineAction,
   SalonDraft,
-} from "@/lib/store";
-import { EMPTY_SALON, toCoordinate } from "@/lib/store";
+} from "@/lib/types";
+import { EMPTY_SALON, toCoordinate } from "@/lib/types";
+import {
+  getStoredActiveSalonId,
+  saveStoredActiveSalonId,
+} from "@/lib/storage";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -269,7 +273,7 @@ export function useSupabaseSalonStore() {
 
         // Définir le salon actif (le premier ou celui stocké précédemment)
         if (salonsData && salonsData.length > 0) {
-          const stored = localStorage.getItem("barbercuts_active_salon_id_v1");
+          const stored = getStoredActiveSalonId();
           const found = salonsData.find((s) => s.id === stored);
           setActiveSalonId(found ? found.id : salonsData[0].id);
         }
@@ -639,7 +643,7 @@ export function useSupabaseSalonStore() {
 
         setSalons((prev) => [salon, ...prev]);
         setActiveSalonId(salon.id);
-        localStorage.setItem("barbercuts_active_salon_id_v1", salon.id);
+        saveStoredActiveSalonId(salon.id);
 
         // Les prestations saisies pendant l'onboarding sont écrites dans
         // `salon_services` : sans cela elles disparaissaient au rechargement.
