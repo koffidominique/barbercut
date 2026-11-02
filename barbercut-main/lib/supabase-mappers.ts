@@ -71,9 +71,9 @@ export function mapSalonRow(
     latitude: toCoordinate(row.latitude),
     longitude: toCoordinate(row.longitude),
     features: Array.isArray(row.features) ? row.features : [],
-    gallery: collections.gallery,
-    services: collections.services,
-    staff: collections.staff,
+    gallery: collections.gallery ?? [],
+    services: collections.services ?? [],
+    staff: collections.staff ?? [],
   };
 }
 

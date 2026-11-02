@@ -12,6 +12,8 @@
     "check": "npm run typecheck && npm run lint && npm run build",
     "check:migrations": "node scripts/check-migrations.js",
     "db:push": "supabase db push",
+    "db:migrate": "node scripts/apply-migrations.js",
+    "db:status": "node scripts/apply-migrations.js --status",
     "clean": "rm -rf .next tsconfig.tsbuildinfo"
   },
   "dependencies": {
@@ -36,10 +38,12 @@
     "@types/d3": "^7.4.3",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^24",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.4",
+    "pg": "^8.23.1",
     "postcss": "^8.5",
     "shadcn": "^4.11.0",
     "tailwindcss": "^4.3.3",
