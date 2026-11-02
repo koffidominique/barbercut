@@ -21,9 +21,18 @@ import {
   Store,
   SlidersHorizontal,
 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { Salon, ShowcasePhoto, SalonService, Appointment } from '@/lib/store'
 import { BookingModal } from '@/components/BookingModal'
 import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
+
+const MarketplaceMap = dynamic(
+  () => import('@/components/MarketplaceMap').then((mod) => ({ default: mod.MarketplaceMap })),
+  {
+    ssr: false,
+    loading: () => <div className="h-[500px] flex items-center justify-center text-[#8c9089]">Chargement de la carte...</div>,
+  }
+) as React.ComponentType<{ salons: Salon[]; onSelectSalon?: (salonId: string) => void }>
 
 interface MarketplaceViewProps {
   salons: Salon[]
@@ -40,6 +49,7 @@ export function MarketplaceView({
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('Tous')
   const [selectedCategory, setSelectedCategory] = useState('Tous')
   const [sortBy, setSortBy] = useState<'mieuxNote' | 'moinsCher' | 'plusProche' | 'nouveautes'>('mieuxNote')
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
 
   // Booking modal state
   const [bookingSalon, setBookingSalon] = useState<Salon | null>(null)
@@ -244,6 +254,29 @@ export function MarketplaceView({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Vue liste / carte */}
+            <div className="flex items-center gap-1.5 p-1 bg-[#edeae3] rounded-xl">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#6b7069] px-2 py-1.5">
+                Vue
+              </label>
+              {[
+                { id: 'list', label: 'Liste', icon: 'layers' },
+                { id: 'map', label: 'Carte', icon: 'map-pin' },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setViewMode(o.id as any)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                    viewMode === o.id
+                      ? 'bg-[#202321] text-white shadow-sm'
+                      : 'text-[#6b7069] hover:text-[#202321]'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
             {/* Tri */}
             <div className="flex items-center gap-1.5 p-1 bg-[#edeae3] rounded-xl">
               <label className="text-[10px] font-bold uppercase tracking-wider text-[#6b7069] px-2 py-1.5">
@@ -306,178 +339,193 @@ export function MarketplaceView({
         </div>
 
         {/* Salons Showcase Grid */}
-        {sortedSalons.length === 0 ? (
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={fadeInUp}
-            className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center"
-          >
-            <Store className="mx-auto mb-3 text-[#bd664a]" size={36} />
-            <h3 className="font-serif text-lg font-bold text-[#202321]">Aucun salon trouvé</h3>
-            <p className="mt-1 text-xs text-[#8c9089]">
-              Essayez de modifier votre recherche ou vos filtres de quartier.
-            </p>
-          </motion.div>
+        {viewMode === 'map' ? (
+          <div className="mt-8">
+            <MarketplaceMap
+              salons={sortedSalons}
+              onSelectSalon={(salonId) => {
+                const salon = sortedSalons.find((s) => s.id === salonId)
+                if (salon) {
+                  setViewMode('list')
+                  // Le salon sera mis en surbrillance via le scroll ou l'ouverture du modal
+                }
+              }}
+            />
+          </div>
         ) : (
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={staggerContainer}
-            className="grid gap-8 lg:grid-cols-2"
-          >
-            {sortedSalons.map((salon) => (
-              <motion.div
-                key={salon.id}
-                initial="hidden"
-                animate="visible"
-                variants={staggerItem}
-                className="group flex flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white cursor-default"
-              >
-                {/* Salon Cover & Hero Strip */}
-                <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#202321]">
-                  <img
-                    src={salon.coverImage}
-                    alt={salon.name}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+          sortedSalons.length === 0 ? (
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={fadeInUp}
+              className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center"
+            >
+              <Store className="mx-auto mb-3 text-[#bd664a]" size={36} />
+              <h3 className="font-serif text-lg font-bold text-[#202321]">Aucun salon trouvé</h3>
+              <p className="mt-1 text-xs text-[#8c9089]">
+                Essayez de modifier votre recherche ou vos filtres de quartier.
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={staggerContainer}
+              className="grid gap-8 lg:grid-cols-2"
+            >
+              {sortedSalons.map((salon) => (
+                <motion.div
+                  key={salon.id}
+                  initial="hidden"
+                  animate="visible"
+                  variants={staggerItem}
+                  className="group flex flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white cursor-default"
+                >
+                  {/* Salon Cover & Hero Strip */}
+                  <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#202321]">
+                    <img
+                      src={salon.coverImage}
+                      alt={salon.name}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
 
-                  {/* Top badges */}
-                  <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-                    <span className="flex items-center gap-1 rounded-xl bg-white/90 px-3 py-1 text-[11px] font-bold text-[#202321] backdrop-blur-md shadow-sm">
-                      <ShieldCheck size={14} className="text-[#3c782d]" />
-                      Partenaire Vérifié ERP
-                    </span>
-                    <span className="flex items-center gap-1 rounded-xl bg-[#202321]/80 px-2.5 py-1 text-[11px] font-bold text-[#f4c58d] backdrop-blur-md">
-                      <Star size={13} fill="#f4c58d" />
-                      {salon.rating} ({salon.reviewsCount})
-                    </span>
-                  </div>
-
-                  {/* Bottom title & location */}
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <div className="flex items-center gap-1.5 text-xs text-[#e6b98e] font-semibold">
-                      <MapPin size={13} />
-                      <span>{salon.neighborhood}, {salon.city}</span>
-                      <span>·</span>
-                      <span>{salon.openingHours}</span>
-                    </div>
-                    <Link href={`/salon/${salon.id}`} className="hover:underline">
-                      <h3 className="mt-1 font-serif text-2xl font-bold tracking-tight text-white">
-                        {salon.name}
-                      </h3>
-                    </Link>
-                    <p className="mt-1 text-xs text-[#d3d8d3] line-clamp-1">{salon.tagline}</p>
-                  </div>
-                </div>
-
-                {/* Salon Content & Showcase Photos */}
-                <div className="flex flex-1 flex-col p-6 space-y-5">
-                  {/* Photo Gallery Showcase (Clickable thumbnails with descriptions) */}
-                  <div>
-                    <div className="mb-2.5 flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f]">
-                        Photos & Réalisations publiées ({salon.gallery.length})
+                    {/* Top badges */}
+                    <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+                      <span className="flex items-center gap-1 rounded-xl bg-white/90 px-3 py-1 text-[11px] font-bold text-[#202321] backdrop-blur-md shadow-sm">
+                        <ShieldCheck size={14} className="text-[#3c782d]" />
+                        Partenaire Vérifié ERP
                       </span>
-                      <span className="text-[11px] text-[#bd664a] font-semibold">
-                        Cliquez pour agrandir
+                      <span className="flex items-center gap-1 rounded-xl bg-[#202321]/80 px-2.5 py-1 text-[11px] font-bold text-[#f4c58d] backdrop-blur-md">
+                        <Star size={13} fill="#f4c58d" />
+                        {salon.rating} ({salon.reviewsCount})
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {salon.gallery.map((photo) => (
-                        <button
-                          type="button"
-                          key={photo.id}
-                          onClick={() => setLightboxPhoto({ photo, salon })}
-                          className="group/thumb relative aspect-[4/3] overflow-hidden rounded-xl bg-[#202321] text-left transition hover:ring-2 hover:ring-[#bd664a]"
-                        >
-                          <img
-                            src={photo.url}
-                            alt={photo.title}
-                            className="h-full w-full object-cover transition duration-300 group-hover/thumb:scale-110"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-2 text-white">
-                            <span className="text-[10px] font-bold leading-tight line-clamp-1">
-                              {photo.title}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
+
+                    {/* Bottom title & location */}
+                    <div className="absolute bottom-4 left-4 right-4 text-white">
+                      <div className="flex items-center gap-1.5 text-xs text-[#e6b98e] font-semibold">
+                        <MapPin size={13} />
+                        <span>{salon.neighborhood}, {salon.city}</span>
+                        <span>·</span>
+                        <span>{salon.openingHours}</span>
+                      </div>
+                      <Link href={`/salon/${salon.id}`} className="hover:underline">
+                        <h3 className="mt-1 font-serif text-2xl font-bold tracking-tight text-white">
+                          {salon.name}
+                        </h3>
+                      </Link>
+                      <p className="mt-1 text-xs text-[#d3d8d3] line-clamp-1">{salon.tagline}</p>
                     </div>
                   </div>
 
-                  {/* Features & Amenities */}
-                  <div>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f] block mb-2">
-                      Équipements & Confort
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {salon.features.slice(0, 4).map((feat) => (
-                        <span
-                          key={feat}
-                          className="rounded-lg bg-[#f5f3ec] px-2.5 py-1 text-[11px] font-medium text-[#5c615a]"
-                        >
-                          ✓ {feat}
+                  {/* Salon Content & Showcase Photos */}
+                  <div className="flex flex-1 flex-col p-6 space-y-5">
+                    {/* Photo Gallery Showcase (Clickable thumbnails with descriptions) */}
+                    <div>
+                      <div className="mb-2.5 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f]">
+                          Photos & Réalisations publiées ({salon.gallery.length})
                         </span>
-                      ))}
+                        <span className="text-[11px] text-[#bd664a] font-semibold">
+                          Cliquez pour agrandir
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {salon.gallery.map((photo) => (
+                          <button
+                            type="button"
+                            key={photo.id}
+                            onClick={() => setLightboxPhoto({ photo, salon })}
+                            className="group/thumb relative aspect-[4/3] overflow-hidden rounded-xl bg-[#202321] text-left transition hover:ring-2 hover:ring-[#bd664a]"
+                          >
+                            <img
+                              src={photo.url}
+                              alt={photo.title}
+                              className="h-full w-full object-cover transition duration-300 group-hover/thumb:scale-110"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-2 text-white">
+                              <span className="text-[10px] font-bold leading-tight line-clamp-1">
+                                {photo.title}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Highlighted Services List with direct booking */}
-                  <div className="border-t border-[#f0ece5] pt-4">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f] block mb-2.5">
-                      Prestations & Tarifs directs
-                    </span>
-                    <div className="space-y-2">
-                      {salon.services.slice(0, 3).map((srv) => (
-                        <div
-                          key={srv.id}
-                          className="flex items-center justify-between rounded-xl border border-[#ede9e2] bg-[#fdfcf9] px-3.5 py-2.5 transition hover:border-[#bd664a]"
-                        >
-                          <div>
-                            <div className="text-xs font-semibold text-[#202321]">{srv.name}</div>
-                            <div className="text-[11px] text-[#868a83]">
-                              {srv.duration} min · {srv.category}
+                    {/* Features & Amenities */}
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f] block mb-2">
+                        Équipements & Confort
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {salon.features.slice(0, 4).map((feat) => (
+                          <span
+                            key={feat}
+                            className="rounded-lg bg-[#f5f3ec] px-2.5 py-1 text-[11px] font-medium text-[#5c615a]"
+                          >
+                            ✓ {feat}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Highlighted Services List with direct booking */}
+                    <div className="border-t border-[#f0ece5] pt-4">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#91958f] block mb-2.5">
+                        Prestations & Tarifs directs
+                      </span>
+                      <div className="space-y-2">
+                        {salon.services.slice(0, 3).map((srv) => (
+                          <div
+                            key={srv.id}
+                            className="flex items-center justify-between rounded-xl border border-[#ede9e2] bg-[#fdfcf9] px-3.5 py-2.5 transition hover:border-[#bd664a]"
+                          >
+                            <div>
+                              <div className="text-xs font-semibold text-[#202321]">{srv.name}</div>
+                              <div className="text-[11px] text-[#868a83]">
+                                {srv.duration} min · {srv.category}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-serif text-xs font-bold text-[#bd664a]">
+                                {srv.price.toLocaleString('fr-FR')} F
+                              </span>
+                              <button
+                                onClick={() => handleOpenBooking(salon, srv)}
+                                className="rounded-lg bg-[#202321] px-2.5 py-1 text-[10px] font-bold text-white hover:bg-[#3d423e] transition"
+                              >
+                                Réserver
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-serif text-xs font-bold text-[#bd664a]">
-                              {srv.price.toLocaleString('fr-FR')} F
-                            </span>
-                            <button
-                              onClick={() => handleOpenBooking(salon, srv)}
-                              className="rounded-lg bg-[#202321] px-2.5 py-1 text-[10px] font-bold text-white hover:bg-[#3d423e] transition"
-                            >
-                              Réserver
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Main Action Bar */}
-                  <div className="mt-auto pt-4 flex items-center justify-between border-t border-[#f0ece5]">
-                    <div className="text-xs text-[#7d827b]">
-                      <span className="font-semibold text-[#202321]">{salon.staff.length}</span> barbiers/coiffeurs disponibles
+                        ))}
+                      </div>
                     </div>
 
-                    <button
-                      onClick={() => handleOpenBooking(salon)}
-                      className="flex items-center gap-2 rounded-xl bg-[#bd664a] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#a55339] transition"
-                    >
-                      <Calendar size={14} />
-                      <span>Prendre rendez-vous</span>
-                      <ArrowRight size={13} />
-                    </button>
+                    {/* Main Action Bar */}
+                    <div className="mt-auto pt-4 flex items-center justify-between border-t border-[#f0ece5]">
+                      <div className="text-xs text-[#7d827b]">
+                        <span className="font-semibold text-[#202321]">{salon.staff.length}</span> barbiers/coiffeurs disponibles
+                      </div>
+
+                      <button
+                        onClick={() => handleOpenBooking(salon)}
+                        className="flex items-center gap-2 rounded-xl bg-[#bd664a] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#a55339] transition"
+                      >
+                        <Calendar size={14} />
+                        <span>Prendre rendez-vous</span>
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
+                </motion.div>
+              ))}
+            </motion.div>
+          )
         )}
       </section>
 

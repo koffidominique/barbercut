@@ -75,6 +75,8 @@ export interface Salon {
   currency?: string
   smsRemindersEnabled?: boolean
   whatsappConfirmationEnabled?: boolean
+  latitude?: number
+  longitude?: number
 }
 
 export interface SalonReview {
@@ -94,6 +96,7 @@ export interface Appointment {
   salonId: string
   clientName: string
   clientPhone: string
+  clientEmail?: string
   serviceId: string
   serviceName: string
   servicePrice: number
@@ -106,6 +109,75 @@ export interface Appointment {
   createdAt: string
   paymentStatus?: 'unpaid' | 'partial' | 'paid'
   paymentMethod?: 'cash' | 'wave' | 'orange_money' | 'card'
+}
+
+export interface ClientAccount {
+  id: string
+  name: string
+  phone: string
+  email?: string
+  password?: string // En production, jamais en clair
+  totalVisits: number
+  totalSpent: number
+  status: 'VIP' | 'Régulier' | 'Nouveau'
+  source: 'marketplace' | 'direct'
+  createdAt: string
+}
+
+const STORAGE_KEYS = {
+  SALONS: 'barbercuts_salons_v1',
+  APPOINTMENTS: 'barbercuts_appointments_v1',
+  CLIENTS: 'barbercuts_clients_v1',
+  REVIEWS: 'barbercuts_reviews_v1',
+  CLIENT_ACCOUNTS: 'barbercuts_client_accounts_v1',
+  ACTIVE_SALON_ID: 'barbercuts_active_salon_id_v1',
+  CLIENT_SESSION: 'barbercuts_client_session_v1',
+}
+
+export function getStoredClientAccounts(): ClientAccount[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CLIENT_ACCOUNTS)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+export function saveStoredClientAccounts(accounts: ClientAccount[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEYS.CLIENT_ACCOUNTS, JSON.stringify(accounts))
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving client accounts', e)
+  }
+}
+
+export function getClientSession(): ClientAccount | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CLIENT_SESSION)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function saveClientSession(account: ClientAccount | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (account) {
+      localStorage.setItem(STORAGE_KEYS.CLIENT_SESSION, JSON.stringify(account))
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.CLIENT_SESSION)
+    }
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving client session', e)
+  }
 }
 
 const DEFAULT_CLIENTS: SalonClient[] = [
@@ -215,6 +287,8 @@ const DEFAULT_SALONS: Salon[] = [
     currency: 'FCFA',
     smsRemindersEnabled: true,
     whatsappConfirmationEnabled: true,
+    latitude: 5.3601,
+    longitude: -4.0083,
     features: [
       'Salon climatisé haut standing',
       'Boissons fraîches & café offerts',
@@ -357,6 +431,8 @@ const DEFAULT_SALONS: Salon[] = [
     currency: 'FCFA',
     smsRemindersEnabled: true,
     whatsappConfirmationEnabled: true,
+    latitude: 5.3026,
+    longitude: -3.9838,
     features: [
       'Ambiance club maritime feutré',
       'Cocktail ou whisky offert',
@@ -508,14 +584,6 @@ const DEFAULT_APPOINTMENTS: Appointment[] = [
   },
 ]
 
-const STORAGE_KEYS = {
-  SALONS: 'barbercuts_salons_v1',
-  APPOINTMENTS: 'barbercuts_appointments_v1',
-  CLIENTS: 'barbercuts_clients_v1',
-  REVIEWS: 'barbercuts_reviews_v1',
-  ACTIVE_SALON_ID: 'barbercuts_active_salon_id_v1',
-}
-
 export function getStoredSalons(): Salon[] {
   if (typeof window === 'undefined') return DEFAULT_SALONS
   try {
@@ -627,6 +695,8 @@ export function useSalonStore() {
   const [appointments, setAppointments] = useState<Appointment[]>(DEFAULT_APPOINTMENTS)
   const [clients, setClients] = useState<SalonClient[]>(DEFAULT_CLIENTS)
   const [reviews, setReviews] = useState<SalonReview[]>([])
+  const [clientAccounts, setClientAccounts] = useState<ClientAccount[]>([])
+  const [clientAccount, setClientAccount] = useState<ClientAccount | null>(null)
   const [activeSalonId, setActiveSalonId] = useState<string>('barber-cuts-cocody')
   const [isLoaded, setIsLoaded] = useState(false)
 
@@ -635,10 +705,15 @@ export function useSalonStore() {
     const a = getStoredAppointments()
     const c = getStoredClients()
     const r = getStoredReviews()
+    const ca = getStoredClientAccounts()
     setSalons(s)
     setAppointments(a)
     setClients(c)
     setReviews(r)
+    setClientAccounts(ca)
+    // Restaurer la session client si existante
+    const session = getClientSession()
+    if (session) setClientAccount(session)
     setIsLoaded(true)
   }
 
@@ -786,6 +861,58 @@ export function useSalonStore() {
     }
   }
 
+  // ── Comptes clients ──
+
+  // Enregistrer un nouveau client
+  const registerClient = (data: {
+    name: string
+    phone: string
+    email?: string
+    password: string
+  }) => {
+    const existing = clientAccounts.find((a) => a.phone === data.phone || a.email === data.email)
+    if (existing) {
+      throw new Error('Un compte existe déjà avec ce téléphone ou cet email.')
+    }
+    const newAccount: ClientAccount = {
+      id: 'client-' + Date.now(),
+      name: data.name,
+      phone: data.phone,
+      email: data.email,
+      password: data.password, // En production, jamais en clair
+      totalVisits: 0,
+      totalSpent: 0,
+      status: 'Nouveau',
+      source: 'marketplace',
+      createdAt: new Date().toISOString(),
+    }
+    const next = [...clientAccounts, newAccount]
+    setClientAccounts(next)
+    saveStoredClientAccounts(next)
+    setClientAccount(newAccount)
+    saveClientSession(newAccount)
+    return newAccount
+  }
+
+  // Connecter un client existant
+  const loginClient = (phoneOrEmail: string, password: string) => {
+    const account = clientAccounts.find(
+      (a) => (a.phone === phoneOrEmail || a.email === phoneOrEmail) && a.password === password
+    )
+    if (!account) {
+      throw new Error('Identifiants incorrects.')
+    }
+    setClientAccount(account)
+    saveClientSession(account)
+    return account
+  }
+
+  // Déconnecter le client
+  const logoutClient = () => {
+    setClientAccount(null)
+    saveClientSession(null)
+  }
+
   // Add / Edit Staff member in current salon
   const saveStaffMember = (staff: StaffMember) => {
     const exists = currentSalon.staff.some((s) => s.id === staff.id)
@@ -872,6 +999,8 @@ export function useSalonStore() {
     setActiveSalonId,
     appointments,
     clients,
+    clientAccounts,
+    clientAccount,
     reviews,
     isLoaded,
     updateSalon,
@@ -883,6 +1012,9 @@ export function useSalonStore() {
     saveClient,
     deleteClient,
     saveReview,
+    registerClient,
+    loginClient,
+    logoutClient,
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

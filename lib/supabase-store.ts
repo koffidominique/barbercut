@@ -10,6 +10,7 @@ import type {
   SalonService,
   ShowcasePhoto,
   SalonReview,
+  ClientAccount,
 } from '@/lib/store'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -591,6 +592,8 @@ export function useSupabaseSalonStore() {
     setActiveSalonId,
     appointments,
     clients,
+    clientAccounts: [] as ClientAccount[],
+    clientAccount: null,
     isLoaded,
     updateSalon,
     createSalon,
@@ -602,6 +605,9 @@ export function useSupabaseSalonStore() {
     deleteClient,
     reviews: [] as SalonReview[],
     saveReview: () => {},
+    registerClient: () => { throw new Error('Non disponible avec Supabase') },
+    loginClient: () => { throw new Error('Non disponible avec Supabase') },
+    logoutClient: () => {},
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,
