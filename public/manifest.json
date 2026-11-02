@@ -1,0 +1,71 @@
+{
+  "name": "Barber Cuts — Gestion de Salon",
+  "short_name": "Barber Cuts",
+  "description": "Pilotez votre salon de coiffure, vos rendez-vous et votre vitrine depuis un seul espace. ERP pour barbiers et coiffeurs en Côte d'Ivoire.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f6f2",
+  "theme_color": "#202321",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["lifestyle", "beauty", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-light-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-dark-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "apple touch icon"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nouveau rendez-vous",
+      "short_name": "Nouveau RDV",
+      "description": "Prendre un nouveau rendez-vous",
+      "url": "/marketplace",
+      "icons": [{ "src": "/icon-light-32x32.png", "sizes": "32x32" }]
+    },
+    {
+      "name": "Voir la vitrine",
+      "short_name": "Vitrine",
+      "description": "Consulter la vitrine publique du salon",
+      "url": "/marketplace",
+      "icons": [{ "src": "/icon-dark-32x32.png", "sizes": "32x32" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/barber_marine_salon_1793627544764.jpg",
+      "sizes": "750x1334",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Page d'accueil Barber Cuts"
+    },
+    {
+      "src": "/images/marketplace_hero_lifestyle_1793627543863.jpg",
+      "sizes": "750x1334",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Marketplace des salons"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import type {
   ClientAccount,
   SalonSubscription,
   TeamInvitation,
+  OfflineAction,
 } from '@/lib/store'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -598,6 +599,8 @@ export function useSupabaseSalonStore() {
     clientAccount: null,
     subscriptions: {} as Record<string, SalonSubscription>,
     teamInvitations: [] as TeamInvitation[],
+    offlineQueue: [] as OfflineAction[],
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     isLoaded,
     updateSalon,
     createSalon,
@@ -619,6 +622,7 @@ export function useSupabaseSalonStore() {
     cancelSubscription: () => null,
     inviteTeamMember: () => { throw new Error('Non disponible avec Supabase') },
     respondToInvitation: () => {},
+    syncOfflineQueue: async () => {},
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

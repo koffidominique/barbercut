@@ -168,6 +168,36 @@ const STORAGE_KEYS = {
   CLIENT_SESSION: 'barbercuts_client_session_v1',
   SUBSCRIPTIONS: 'barbercuts_subscriptions_v1',
   TEAM_INVITATIONS: 'barbercuts_team_invitations_v1',
+  OFFLINE_QUEUE: 'barbercuts_offline_queue_v1',
+}
+
+export interface OfflineAction {
+  id: string
+  type: 'book_appointment' | 'update_status' | 'update_payment' | 'save_client' | 'save_review'
+  payload: any
+  timestamp: string
+  salonId: string
+}
+
+export function getStoredOfflineQueue(): OfflineAction[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_QUEUE)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+export function saveStoredOfflineQueue(queue: OfflineAction[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(queue))
+    window.dispatchEvent(new Event('barbercuts_storage_update'))
+  } catch (e) {
+    console.error('Error saving offline queue', e)
+  }
 }
 
 export function getStoredSubscriptions(): Record<string, SalonSubscription> {
@@ -777,6 +807,8 @@ export function useSalonStore() {
   const [clientAccount, setClientAccount] = useState<ClientAccount | null>(null)
   const [subscriptions, setSubscriptions] = useState<Record<string, SalonSubscription>>({})
   const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([])
+  const [offlineQueue, setOfflineQueue] = useState<OfflineAction[]>([])
+  const [isOnline, setIsOnline] = useState(true)
   const [activeSalonId, setActiveSalonId] = useState<string>('barber-cuts-cocody')
   const [isLoaded, setIsLoaded] = useState(false)
 
@@ -787,6 +819,14 @@ export function useSalonStore() {
     const r = getStoredReviews()
     const ca = getStoredClientAccounts()
     const sub = getStoredSubscriptions()
+    const oq = getStoredOfflineQueue()
+    setSalons(s)
+    setAppointments(a)
+    setClients(c)
+    setReviews(r)
+    setClientAccounts(ca)
+    setSubscriptions(sub)
+    setOfflineQueue(oq)
     const inv = getStoredTeamInvitations()
     setSalons(s)
     setAppointments(a)
@@ -804,13 +844,54 @@ export function useSalonStore() {
   useEffect(() => {
     reloadData()
     const handleStorage = () => reloadData()
+    const handleOnline = () => {
+      setIsOnline(true)
+      syncOfflineQueue()
+    }
+    const handleOffline = () => setIsOnline(false)
     window.addEventListener('storage', handleStorage)
     window.addEventListener('barbercuts_storage_update', handleStorage)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
     return () => {
       window.removeEventListener('storage', handleStorage)
       window.removeEventListener('barbercuts_storage_update', handleStorage)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
   }, [])
+
+  // Synchroniser la file d'attente hors-ligne quand la connexion revient
+  const syncOfflineQueue = async () => {
+    const queue = getStoredOfflineQueue()
+    if (queue.length === 0) return
+    const remaining: OfflineAction[] = []
+    for (const action of queue) {
+      try {
+        switch (action.type) {
+          case 'book_appointment':
+            bookAppointment(action.payload)
+            break
+          case 'update_status':
+            updateAppointmentStatus(action.payload.id, action.payload.status)
+            break
+          case 'update_payment':
+            updateAppointmentPayment(action.payload.id, action.payload.paymentStatus, action.payload.paymentMethod)
+            break
+          case 'save_client':
+            saveClient(action.payload)
+            break
+          case 'save_review':
+            saveReview(action.payload)
+            break
+        }
+      } catch {
+        remaining.push(action)
+      }
+    }
+    setOfflineQueue(remaining)
+    saveStoredOfflineQueue(remaining)
+  }
 
   const currentSalon = salons.find((s) => s.id === activeSalonId) || salons[0]
 
@@ -1248,6 +1329,8 @@ export function useSalonStore() {
     clientAccount,
     subscriptions,
     teamInvitations,
+    offlineQueue,
+    isOnline,
     reviews,
     isLoaded,
     updateSalon,
@@ -1269,6 +1352,7 @@ export function useSalonStore() {
     cancelSubscription,
     inviteTeamMember,
     respondToInvitation,
+    syncOfflineQueue,
     saveStaffMember,
     deleteStaffMember,
     resetDefaults,

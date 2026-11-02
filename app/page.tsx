@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -38,12 +39,68 @@ import { ERPAppointmentsView } from '@/components/ERPAppointmentsView'
 import { ERPClientsView } from '@/components/ERPClientsView'
 import { ERPServicesView } from '@/components/ERPServicesView'
 import { ERPTeamView } from '@/components/ERPTeamView'
-import { ERPReportsView } from '@/components/ERPReportsView'
+
+// Chargement paresseux des composants lourds (D3 chart, analytics, modales)
+const WeeklyRevenueChart = dynamic(
+  () => import('@/components/WeeklyRevenueChart').then((mod) => ({ default: mod.WeeklyRevenueChart })),
+  {
+    loading: () => (
+      <div className="h-64 bg-[#f5f3ec] rounded-3xl flex items-center justify-center animate-pulse">
+        <span className="text-xs text-[#8c9089]">Chargement du graphique...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+) as React.ComponentType<{}>
+
+const ERPReportsView = dynamic(
+  () => import('@/components/ERPReportsView').then((mod) => ({ default: mod.ERPReportsView })),
+  {
+    loading: () => (
+      <div className="h-64 bg-[#f5f3ec] rounded-3xl flex items-center justify-center animate-pulse">
+        <span className="text-xs text-[#8c9089]">Chargement des rapports...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+) as React.ComponentType<{ salon: import('@/lib/store').Salon; appointments: Appointment[] }>
+
+const ERPAnalyticsView = dynamic(
+  () => import('@/components/ERPAnalyticsView').then((mod) => ({ default: mod.ERPAnalyticsView })),
+  {
+    loading: () => (
+      <div className="h-96 bg-[#f5f3ec] rounded-3xl flex items-center justify-center animate-pulse">
+        <span className="text-xs text-[#8c9089]">Chargement des analytics...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+) as React.ComponentType<{ salon: import('@/lib/store').Salon; appointments: Appointment[]; staff: import('@/lib/store').StaffMember[] }>
+
+const ERPSubscriptionView = dynamic(
+  () => import('@/components/ERPSubscriptionView').then((mod) => ({ default: mod.ERPSubscriptionView })),
+  {
+    loading: () => (
+      <div className="h-96 bg-[#f5f3ec] rounded-3xl flex items-center justify-center animate-pulse">
+        <span className="text-xs text-[#8c9089]">Chargement de l'abonnement...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+) as React.ComponentType<{ salon: import('@/lib/store').Salon }>
+
+const MarketplaceView = dynamic(
+  () => import('@/components/MarketplaceView').then((mod) => ({ default: mod.MarketplaceView })),
+  {
+    loading: () => (
+      <div className="min-h-[400px] bg-[#f5f3ec] rounded-3xl flex items-center justify-center animate-pulse">
+        <span className="text-xs text-[#8c9089]">Chargement de la marketplace...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+) as React.ComponentType<{ salons: import('@/lib/store').Salon[]; onBookAppointment: (data: Omit<Appointment, 'id' | 'createdAt'>) => Appointment; onSwitchToErp: () => void }>
 import { ERPSettingsView } from '@/components/ERPSettingsView'
-import { ERPAnalyticsView } from '@/components/ERPAnalyticsView'
-import { ERPSubscriptionView } from '@/components/ERPSubscriptionView'
-import { WeeklyRevenueChart } from '@/components/WeeklyRevenueChart'
-import { MarketplaceView } from '@/components/MarketplaceView'
 
 export default function Page() {
   const {
