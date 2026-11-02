@@ -34,6 +34,7 @@ import {
   Scissors,
 } from 'lucide-react'
 import { useSalonStore, Appointment } from '@/lib/store'
+import { formatPrice } from '@/lib/locale'
 import { createClient } from '@/lib/supabase'
 import { VitrineManager } from '@/components/VitrineManager'
 import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
@@ -43,6 +44,7 @@ import { ERPServicesView } from '@/components/ERPServicesView'
 import { ERPTeamView } from '@/components/ERPTeamView'
 
 // Chargement paresseux des composants lourds (D3 chart, analytics, modales)
+type WeeklyRevenueChartProps = { salon?: import('@/lib/types').Salon | null }
 const WeeklyRevenueChart = dynamic(
   () => import('@/components/WeeklyRevenueChart').then((mod) => ({ default: mod.WeeklyRevenueChart })),
   {
@@ -53,7 +55,7 @@ const WeeklyRevenueChart = dynamic(
     ),
     ssr: false,
   }
-) as React.ComponentType<{}>
+) as React.ComponentType<WeeklyRevenueChartProps>
 
 const ERPReportsView = dynamic(
   () => import('@/components/ERPReportsView').then((mod) => ({ default: mod.ERPReportsView })),
@@ -602,8 +604,7 @@ export default function Page() {
                   <StatCard
                     icon={<WalletCards size={18} />}
                     label="Chiffre d’affaires estimé"
-                    value={totalRevenue.toLocaleString('fr-FR')}
-                    suffix="FCFA"
+                    value={formatPrice(totalRevenue, currentSalon)}
                     detail="Prestations confirmées"
                     positive
                   />
@@ -635,7 +636,7 @@ export default function Page() {
                 variants={fadeInUp}
                 className="mt-6"
               >
-                <WeeklyRevenueChart />
+                <WeeklyRevenueChart salon={currentSalon} />
               </motion.div>
 
               {/* Main Content Split: Schedule & Vitrine Spotlight */}
@@ -683,7 +684,7 @@ export default function Page() {
                           </div>
                         </div>
                         <span className="font-serif text-xs font-bold text-[#202321]">
-                          {apt.servicePrice.toLocaleString('fr-FR')} F
+                          {formatPrice(apt.servicePrice, currentSalon)}
                         </span>
                         <span
                           className={`rounded-md px-2 py-1 text-[10px] font-semibold ${apt.status === 'confirmed'
@@ -814,7 +815,7 @@ export default function Page() {
                           </div>
                         </div>
                         <div className="font-serif font-bold text-[#bd664a]">
-                          {srv.price.toLocaleString('fr-FR')} FCFA
+                          {formatPrice(srv.price, currentSalon)}
                         </div>
                       </div>
                     ))}

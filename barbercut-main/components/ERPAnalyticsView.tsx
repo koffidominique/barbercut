@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Salon, Appointment, StaffMember } from '@/lib/store'
 import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
+import { formatPrice } from '@/lib/locale'
 
 interface ERPAnalyticsViewProps {
   salon: Salon
@@ -149,8 +150,8 @@ export function ERPAnalyticsView({ salon, appointments, staff }: ERPAnalyticsVie
   const totalClients = clientVisitCounts.size
   const churnRate = totalClients > 0 ? Math.round((oneTimeClients / totalClients) * 100) : 0
 
-  const formatFcfa = (n: number) => n.toLocaleString('fr-FR')
-
+  // Localise via la devise du salon (remplace le format fige 'fr-FR' + suffixe FCFA).
+  const formatFcfa = (n: number) => formatPrice(n, salon)
   return (
     <div className="space-y-8">
       {/* En-tête */}
@@ -191,7 +192,7 @@ export function ERPAnalyticsView({ salon, appointments, staff }: ERPAnalyticsVie
           current={formatFcfa(currentRevenue)}
           previous={formatFcfa(previousRevenue)}
           change={revenueChange}
-          unit="FCFA"
+          unit=""
         />
         <StatCardCompare
           icon={<CalendarDays size={18} />}
@@ -228,7 +229,7 @@ export function ERPAnalyticsView({ salon, appointments, staff }: ERPAnalyticsVie
             <p className="text-xs text-[#747873]">Revenu généré par jour</p>
           </div>
         </div>
-        <DailyRevenueChart data={dailyRevenue} />
+        <DailyRevenueChart data={dailyRevenue} salon={salon} />
       </section>
 
       {/* Grille : Top prestations & No-show par équipe */}
@@ -255,7 +256,6 @@ export function ERPAnalyticsView({ salon, appointments, staff }: ERPAnalyticsVie
                 </div>
                 <div className="text-right">
                   <div className="font-serif font-bold text-[#202321]">{formatFcfa(svc.revenue)}</div>
-                  <div className="text-[10px] text-[#8c9089]">FCFA</div>
                 </div>
               </div>
             ))}
@@ -402,7 +402,7 @@ function StatCardCompare({
   )
 }
 
-function DailyRevenueChart({ data }: { data: { label: string; revenue: number; count: number }[] }) {
+function DailyRevenueChart({ data, salon }: { data: { label: string; revenue: number; count: number }[]; salon: Salon }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1)
   const barHeight = (d: number) => (d / maxRevenue) * 100
 
@@ -421,7 +421,7 @@ function DailyRevenueChart({ data }: { data: { label: string; revenue: number; c
             />
             {d.revenue > 0 && (
               <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-[#202321]">
-                {formatFcfa(d.revenue)}
+                {formatPrice(d.revenue, salon)}
               </div>
             )}
           </div>
@@ -433,6 +433,4 @@ function DailyRevenueChart({ data }: { data: { label: string; revenue: number; c
   )
 }
 
-function formatFcfa(n: number) {
-  return n.toLocaleString('fr-FR')
-}
+

@@ -15,6 +15,7 @@ import {
 import { Salon, SalonSubscription } from '@/lib/store'
 import { useSalonStore } from '@/lib/store'
 import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
+import { formatPrice, formatShortDate, getSalonLocale, formatRelativeDays } from '@/lib/locale'
 
 interface ERPSubscriptionViewProps {
   salon: Salon
@@ -30,10 +31,12 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
 
   const isPro = subscription?.plan === 'pro' && subscription.status === 'active'
   const isTrial = subscription?.status === 'trial'
+  const salonLocale = getSalonLocale(salon)
   const trialEndsAt = subscription?.trialEndsAt ? new Date(subscription.trialEndsAt) : null
   const daysLeft = trialEndsAt ? Math.ceil((trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0
 
-  const formatFcfa = (n: number) => n.toLocaleString('fr-FR')
+  // Prix localises via la devise du salon ; remplace le helper figure 'fr-FR' + suffixe FCFA.
+  const formatFcfa = (n: number) => formatPrice(n, salon)
 
   const handleUpgrade = () => {
     setShowPaymentModal(true)
@@ -110,7 +113,6 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
               <span className="font-serif text-[32px] font-bold tracking-tight text-[#202321]">
                 {formatFcfa(priceText)} /mois
               </span>
-              <span className="text-xs text-[#747873]">FCFA</span>
             </div>
             <p className="text-xs text-[#747873]">
               Accès illimité à toutes les fonctionnalités : analytics avancés, multi-salons, invitations d’équipe, exports illimités.
@@ -144,7 +146,7 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
                 daysLeft <= 3 ? 'bg-[#fdeae8] text-[#c45347]' : 'bg-[#ebf4e6] text-[#4d7c3b]'
               }`}
             >
-              ⏳ Il reste {daysLeft} jour{daysLeft > 1 ? 's' : ''} avant la fin de l’essai
+              ⏳ Fin de l’essai {formatRelativeDays(daysLeft, salonLocale.locale)}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <button
@@ -172,12 +174,11 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
               <span className="font-serif text-[32px] font-bold tracking-tight text-[#202321]">
                 {formatFcfa(priceText)} /mois
               </span>
-              <span className="text-xs text-[#747873]">FCFA</span>
             </div>
             <p className="text-xs text-[#747873]">
               Abonnement actif • Prochain paiement le{' '}
               <span className="font-semibold text-[#202321]">
-                {subscription?.nextPaymentAt ? new Date(subscription.nextPaymentAt).toLocaleDateString('fr-FR') : '—'}
+                {subscription?.nextPaymentAt ? formatShortDate(subscription.nextPaymentAt, salonLocale) : '—'}
               </span>
             </p>
             <div className="grid gap-3">
@@ -264,11 +265,11 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
                 >
                   <td className="py-3 text-[#202321] font-semibold">{invoice.id}</td>
                   <td className="py-3 text-[#747873]">
-                    {new Date(invoice.date).toLocaleDateString('fr-FR')}
+                    {formatShortDate(invoice.date, salonLocale)}
                   </td>
                   <td className="py-3 text-[#747873]">{invoice.plan}</td>
                   <td className="py-3 text-[#202321] font-semibold">
-                    {invoice.amount === 0 ? 'Gratuit' : formatFcfa(invoice.amount)} FCFA
+                    {invoice.amount === 0 ? 'Gratuit' : formatFcfa(invoice.amount)}
                   </td>
                   <td className="py-3">
                     <span
@@ -312,7 +313,7 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
               </div>
               <h3 className="font-serif text-xl font-bold text-[#202321]">Paiement Mobile Money</h3>
               <p className="text-xs text-[#747873] mt-2">
-                Souscription au plan Pro — {formatFcfa(priceText)} FCFA/mois
+                Souscription au plan Pro — {formatFcfa(priceText)}/mois
               </p>
             </div>
 
@@ -360,7 +361,7 @@ export function ERPSubscriptionView({ salon }: ERPSubscriptionViewProps) {
               <div className="bg-[#f5f3ec] rounded-xl p-4">
                 <div className="flex justify-between mb-1">
                   <span className="text-xs text-[#747873]">Montant</span>
-                  <span className="text-xs font-semibold text-[#202321]">{formatFcfa(priceText)} FCFA</span>
+                  <span className="text-xs font-semibold text-[#202321]">{formatFcfa(priceText)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-[#747873]">TVA (inclus)</span>
