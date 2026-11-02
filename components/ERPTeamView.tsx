@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Salon, StaffMember } from '@/lib/store'
-import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
+import { staggerContainer, staggerItem, fadeInUp, modalOverlay, modalContent } from '@/components/ui/motion'
 
 interface ERPTeamViewProps {
   salon: Salon
@@ -284,12 +284,26 @@ export function ERPTeamView({ salon, onSaveStaff, onDeleteStaff }: ERPTeamViewPr
 
       {/* MODAL: ADD / EDIT STAFF */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={modalOverlay}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             onClick={() => setIsModalOpen(false)}
           />
-          <div className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 10 }}
+            className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8"
+          >
             <h3 className="font-serif text-xl font-bold text-[#202321]">
               {editingStaff ? 'Modifier le collaborateur' : 'Ajouter un membre d’équipe'}
             </h3>
@@ -400,8 +414,8 @@ export function ERPTeamView({ salon, onSaveStaff, onDeleteStaff }: ERPTeamViewPr
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
     </div>
   )

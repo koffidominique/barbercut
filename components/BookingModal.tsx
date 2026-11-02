@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   X,
   Calendar,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Salon, SalonService, Appointment, useSalonStore } from '@/lib/store'
 import { useNotifications } from '@/lib/notifications'
+import { modalOverlay, modalContent } from '@/components/ui/motion'
 
 interface BookingModalProps {
   salon: Salon
@@ -113,7 +115,13 @@ export function BookingModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={modalOverlay}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+    >
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
@@ -121,7 +129,12 @@ export function BookingModal({
       />
 
       {/* Modal Dialog */}
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 10 }}
+        className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8"
+      >
         <button
           onClick={resetAndClose}
           className="absolute right-5 top-5 rounded-full p-2 text-[#7c807b] hover:bg-[#eae7e0] transition-colors"
@@ -409,7 +422,7 @@ export function BookingModal({
             </form>
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

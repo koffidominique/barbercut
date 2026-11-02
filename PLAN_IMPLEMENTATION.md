@@ -131,8 +131,13 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 
 #### 2.6 Critères d'acceptation UIX
 - [x] Tous les boutons ont une animation de scale au survol
-- [x] Les listes se dévoilent avec un effet de stagger progressif
+- [x] Les listes se dévoilent avec un effet de stagger progressif (RDV, Clients, Services, Équipe, Galerie)
 - [x] Les cartes se soulèvent en 3D au survol avec ombre prononcée
+- [x] La page d'accueil (dashboard) s'affiche avec une animation fadeInUp
+- [x] Les KPI Cards apparaissent avec un effet de stagger
+- [x] Le graphique D3 apparaît avec fadeInUp
+- [x] Le MarketplaceView : cartes de salons en stagger, état vide animé
+- [x] Toutes les modales (Booking, Nouveau RDV, Nouveau Client, Détails Client, Add/Edit Service, Add/Edit Staff, Add Showcase Photo, Add Service) s'ouvrent avec scale + fade + backdrop
 - [x] Le build de production passe sans erreur
 - [x] TypeScript strict : 0 erreur
 

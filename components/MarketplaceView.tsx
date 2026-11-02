@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Search,
   MapPin,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react'
 import { Salon, ShowcasePhoto, SalonService, Appointment } from '@/lib/store'
 import { BookingModal } from '@/components/BookingModal'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 
 interface MarketplaceViewProps {
   salons: Salon[]
@@ -258,19 +260,32 @@ export function MarketplaceView({
 
         {/* Salons Showcase Grid */}
         {filteredSalons.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={fadeInUp}
+            className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center"
+          >
             <Store className="mx-auto mb-3 text-[#bd664a]" size={36} />
             <h3 className="font-serif text-lg font-bold text-[#202321]">Aucun salon trouvé</h3>
             <p className="mt-1 text-xs text-[#8c9089]">
               Essayez de modifier votre recherche ou vos filtres de quartier.
             </p>
-          </div>
+          </motion.div>
         ) : (
-          <div className="grid gap-8 lg:grid-cols-2">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={staggerContainer}
+            className="grid gap-8 lg:grid-cols-2"
+          >
             {filteredSalons.map((salon) => (
-              <div
+              <motion.div
                 key={salon.id}
-                className="group flex flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white shadow-sm transition hover:shadow-lg"
+                initial="hidden"
+                animate="visible"
+                variants={staggerItem}
+                className="group flex flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white cursor-default"
               >
                 {/* Salon Cover & Hero Strip */}
                 <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#202321]">
@@ -411,9 +426,9 @@ export function MarketplaceView({
                     </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </section>
 

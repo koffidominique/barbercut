@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { motion } from 'framer-motion'
 import { useNotifications, type Notification } from '@/lib/notifications'
 import {
   Bell,
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react'
 import { useSalonStore, Appointment } from '@/lib/store'
 import { VitrineManager } from '@/components/VitrineManager'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 import { ERPAppointmentsView } from '@/components/ERPAppointmentsView'
 import { ERPClientsView } from '@/components/ERPClientsView'
 import { ERPServicesView } from '@/components/ERPServicesView'
@@ -469,40 +471,60 @@ export default function Page() {
               </div>
 
               {/* KPI Stat Cards with dynamic values */}
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <StatCard
-                  icon={<CalendarDays size={18} />}
-                  label="Rendez-vous prévus"
-                  value={salonAppointments.length.toString()}
-                  detail={`${marketplaceApts.length} venus de la Marketplace`}
-                  positive
-                />
-                <StatCard
-                  icon={<WalletCards size={18} />}
-                  label="Chiffre d’affaires estimé"
-                  value={totalRevenue.toLocaleString('fr-FR')}
-                  suffix="FCFA"
-                  detail="Prestations confirmées"
-                  positive
-                />
-                <StatCard
-                  icon={<ShoppingBag size={18} />}
-                  label="Statut Vitrine Publique"
-                  value={currentSalon.isPublished ? 'En ligne' : 'Masquée'}
-                  detail={`${currentSalon.gallery.length} photos publiées`}
-                  positive={currentSalon.isPublished}
-                />
-                <StatCard
-                  icon={<Sparkles size={18} />}
-                  label="Note Moyenne Marketplace"
-                  value={`${currentSalon.rating}/5`}
-                  detail={`${currentSalon.reviewsCount} avis certifiés`}
-                  positive
-                />
-              </div>
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={staggerContainer}
+                className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+              >
+                <motion.div initial="hidden" animate="visible" variants={staggerItem} className="cursor-default">
+                  <StatCard
+                    icon={<CalendarDays size={18} />}
+                    label="Rendez-vous prévus"
+                    value={salonAppointments.length.toString()}
+                    detail={`${marketplaceApts.length} venus de la Marketplace`}
+                    positive
+                  />
+                </motion.div>
+                <motion.div initial="hidden" animate="visible" variants={staggerItem} className="cursor-default">
+                  <StatCard
+                    icon={<WalletCards size={18} />}
+                    label="Chiffre d’affaires estimé"
+                    value={totalRevenue.toLocaleString('fr-FR')}
+                    suffix="FCFA"
+                    detail="Prestations confirmées"
+                    positive
+                  />
+                </motion.div>
+                <motion.div initial="hidden" animate="visible" variants={staggerItem} className="cursor-default">
+                  <StatCard
+                    icon={<ShoppingBag size={18} />}
+                    label="Statut Vitrine Publique"
+                    value={currentSalon.isPublished ? 'En ligne' : 'Masquée'}
+                    detail={`${currentSalon.gallery.length} photos publiées`}
+                    positive={currentSalon.isPublished}
+                  />
+                </motion.div>
+                <motion.div initial="hidden" animate="visible" variants={staggerItem} className="cursor-default">
+                  <StatCard
+                    icon={<Sparkles size={18} />}
+                    label="Note Moyenne Marketplace"
+                    value={`${currentSalon.rating}/5`}
+                    detail={`${currentSalon.reviewsCount} avis certifiés`}
+                    positive
+                  />
+                </motion.div>
+              </motion.div>
 
               {/* D3 Weekly Revenue Chart */}
-              <WeeklyRevenueChart />
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={fadeInUp}
+                className="mt-6"
+              >
+                <WeeklyRevenueChart />
+              </motion.div>
 
               {/* Main Content Split: Schedule & Vitrine Spotlight */}
               <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">

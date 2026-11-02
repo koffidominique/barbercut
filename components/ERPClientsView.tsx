@@ -20,7 +20,7 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import { SalonClient, Salon, useSalonStore } from '@/lib/store'
-import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
+import { staggerContainer, staggerItem, fadeInUp, modalOverlay, modalContent } from '@/components/ui/motion'
 
 interface ERPClientsViewProps {
   salon: Salon
@@ -372,12 +372,26 @@ export function ERPClientsView({
 
       {/* MODAL: NOUVEAU CLIENT */}
       {isNewClientModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={modalOverlay}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             onClick={() => setIsNewClientModalOpen(false)}
           />
-          <div className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 10 }}
+            className="relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8"
+          >
             <h3 className="font-serif text-xl font-bold text-[#202321]">
               Ajouter une nouvelle fiche client
             </h3>
@@ -494,18 +508,32 @@ export function ERPClientsView({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {/* MODAL: DETAILS CLIENT */}
       {selectedClientDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={modalOverlay}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             onClick={() => setSelectedClientDetails(null)}
           />
-          <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 10 }}
+            className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-[#dedad2] bg-[#fbfaf7] p-6 shadow-2xl sm:p-8"
+          >
             <button
               onClick={() => setSelectedClientDetails(null)}
               className="absolute right-5 top-5 rounded-full p-2 text-[#7c807b] hover:bg-[#eae7e0]"
@@ -583,8 +611,8 @@ export function ERPClientsView({
                 Fermer
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
     </div>
   )
