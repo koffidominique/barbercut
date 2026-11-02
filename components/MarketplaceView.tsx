@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
   Search,
@@ -317,9 +318,11 @@ export function MarketplaceView({
                       <span>·</span>
                       <span>{salon.openingHours}</span>
                     </div>
-                    <h3 className="mt-1 font-serif text-2xl font-bold tracking-tight text-white">
-                      {salon.name}
-                    </h3>
+                    <Link href={`/salon/${salon.id}`} className="hover:underline">
+                      <h3 className="mt-1 font-serif text-2xl font-bold tracking-tight text-white">
+                        {salon.name}
+                      </h3>
+                    </Link>
                     <p className="mt-1 text-xs text-[#d3d8d3] line-clamp-1">{salon.tagline}</p>
                   </div>
                 </div>
