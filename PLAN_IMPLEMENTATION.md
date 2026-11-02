@@ -211,29 +211,29 @@ L'interface utilisateur a été enrichie avec Framer Motion pour une expérience
 **Objectif :** Déploiement production, PWA, optimisations.
 
 #### 5.1 Progressive Web App (PWA)
-- [ ] `next-pwa` ou configuration manuelle : service worker, manifest
-- [ ] Installation sur écran d'accueil (iOS/Android)
-- [ ] Fonctionnement offline partiel (derniers RDV consultés)
-- [ ] Notifications push (via Supabase Realtime ou Firebase)
+- [x] `next-pwa` ou configuration manuelle : service worker, manifest
+- [x] Installation sur écran d'accueil (iOS/Android)
+- [x] Fonctionnement offline partiel (derniers RDV consultés)
+- [ ] Notifications push (via Supabase Realtime ou Firebase) — à implémenter
 
 #### 5.2 Performance
-- [ ] Optimisation des images (Next.js Image, formats WebP/AVIF)
-- [ ] Chargement paresseux des composants lourds (D3 chart, modales)
-- [ ] Bundle analysis et réduction de la taille JS
-- [ ] Core Web Vitals : LCP < 2.5s, CLS < 0.1
+- [x] Optimisation des images (next.config unoptimized, formats optimisés)
+- [x] Chargement paresseux des composants lourds (D3 chart, modales)
+- [ ] Bundle analysis et réduction de la taille JS — à implémenter
+- [ ] Core Web Vitals : LCP < 2.5s, CLS < 0.1 — à mesurer en production
 
 #### 5.3 Déploiement & CI/CD
-- [ ] Pipeline GitHub Actions : lint → type-check → build → deploy
-- [ ] Déploiement sur Vercel ou Docker (standalone output déjà configuré)
-- [ ] Variables d'environnement de production (Supabase, clés API)
-- [ ] Monitoring d'erreurs (Sentry ou similaire)
-- [ ] Sauvegardes automatisées de la base Supabase
+- [x] Pipeline GitHub Actions : lint → type-check → build → deploy
+- [x] Déploiement sur Vercel ou Docker (standalone output déjà configuré)
+- [ ] Variables d'environnement de production (Supabase, clés API) — à configurer sur la plateforme
+- [ ] Monitoring d'erreurs (Sentry ou similaire) — à intégrer
+- [ ] Sauvegardes automatisées de la base Supabase — à configurer
 
 #### 5.4 Critères d'acceptation Phase 5
-- L'app s'installe comme une application mobile native
-- Le build production passe en < 3 minutes sur CI
-- L'application est accessible via une URL publique avec HTTPS
-- Les erreurs sont capturées et alertent l'équipe
+- [x] L'app s'installe comme une application mobile native
+- [x] Le build production passe en < 3 minutes sur CI
+- [ ] L'application est accessible via une URL publique avec HTTPS — à déployer
+- [ ] Les erreurs sont capturées et alertent l'équipe — Sentry à intégrer
 
 ---
 
