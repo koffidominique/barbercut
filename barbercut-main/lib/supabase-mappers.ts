@@ -40,14 +40,14 @@ export function photoPayload(photo: ShowcasePhoto) {
   };
 }
 
-/** Ligne `salons` -> modèle Salon (avec ses collections injectées). */
+/** Ligne `salons` -> modèle Salon, collections enfants fournies par l'appelant. */
 export function mapSalonRow(
   row: any,
   collections: {
-    services: SalonService[];
-    staff: StaffMember[];
-    gallery: ShowcasePhoto[];
-  },
+    services?: SalonService[];
+    staff?: StaffMember[];
+    gallery?: ShowcasePhoto[];
+  } = {},
 ): Salon {
   return {
     id: row.id,
