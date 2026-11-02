@@ -17,11 +17,11 @@ import type { SupabaseClient } from "@/lib/use-salon-data";
 /** Ligne minimale retournée par les requêtes d'alignement (id + champ de dédup). */
 type SyncRow = { id: string; [column: string]: unknown };
 
-interface CollectionSyncConfig<TModel, TName extends string> {
+interface CollectionSyncConfig<TModel> {
   /** Nom de la table PostgREST. */
   table: string;
   /** Colonne lue en plus de `id` pour la détection de doublons. */
-  duplicateColumn: TName;
+  duplicateColumn: string;
   /** Préfixe des clés de signature (`service:` / `photo:`). */
   prefix: (typeof SIGNATURE_PREFIX)[keyof typeof SIGNATURE_PREFIX];
   /** Payload stocké en base à partir du modèle applicatif. */
@@ -41,24 +41,29 @@ interface CollectionSyncConfig<TModel, TName extends string> {
  * Facteur commun de `syncSalonServices` et `syncSalonPhotos`, qui n'étaient
  * que des copies quasi conformes l'une de l'autre.
  */
-async function syncCollection<TModel, TName extends string>(
+async function syncCollection<TModel>(
   supabase: SupabaseClient,
   salonId: string,
   items: TModel[],
-  config: CollectionSyncConfig<TModel, TName>,
+  config: CollectionSyncConfig<TModel>,
   signaturesRef: React.MutableRefObject<Record<string, string>>,
 ): Promise<void> {
   if (!IS_CONFIGURED || !salonId) return;
 
-  const { prefix, table, duplicateColumn } = config;
+  const { prefix, table } = config;
 
   try {
-    const rows = await unwrap<TRow[]>(
-      supabase
-        .from(table)
-        .select(`id, ${duplicateColumn}`)
-        .eq("salon_id", salonId),
-    );
+    // Le select est dynamique (`id, ${colonne de dédup}`) : le parser de types
+    // PostgREST ne peut pas le résoudre (il attend un identifiant littéral),
+    // d'où le cast de la builder chain vers sa réponse runtime.
+    const query = supabase
+      .from(table)
+      .select(`id, ${config.duplicateColumn}`)
+      .eq("salon_id", salonId) as unknown as PromiseLike<{
+      data: SyncRow[] | null;
+      error: unknown;
+    }>;
+    const rows = await unwrap<SyncRow[]>(query);
 
     const stored = rows || [];
     const keptIds = new Set<string>();
@@ -87,7 +92,7 @@ async function syncCollection<TModel, TName extends string>(
       // Identifiant local : éviter de dupliquer un enregistrement déjà écrit
       // avant le prochain rechargement temps réel.
       const duplicate = stored.find(
-        (r) => String(r[duplicateColumn]) === config.modelDuplicateKey(item),
+        (r) => String(r[config.duplicateColumn]) === config.modelDuplicateKey(item),
       );
       if (duplicate) {
         keptIds.add(duplicate.id);
@@ -132,7 +137,7 @@ export function syncSalonServices(
   services: SalonService[],
   signaturesRef: React.MutableRefObject<Record<string, string>>,
 ) {
-  return syncCollection<SalonService, SyncRow>(
+  return syncCollection<SalonService>(
     supabase,
     salonId,
     services,
@@ -155,7 +160,7 @@ export function syncSalonPhotos(
   photos: ShowcasePhoto[],
   signaturesRef: React.MutableRefObject<Record<string, string>>,
 ) {
-  return syncCollection<ShowcasePhoto, SyncRow>(
+  return syncCollection<ShowcasePhoto>(
     supabase,
     salonId,
     photos,
