@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Scissors,
   Plus,
@@ -17,6 +18,7 @@ import {
   Tag,
 } from 'lucide-react'
 import { Salon, SalonService } from '@/lib/store'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 
 interface ERPServicesViewProps {
   salon: Salon
@@ -228,19 +230,32 @@ export function ERPServicesView({ salon, onUpdateSalon }: ERPServicesViewProps) 
 
       {/* Services Grid */}
       {filteredServices.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={fadeInUp}
+          className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-12 text-center"
+        >
           <Scissors className="mx-auto mb-3 text-[#bd664a]" size={32} />
           <h4 className="font-serif text-base font-bold text-[#202321]">Aucune prestation trouvée</h4>
           <p className="mt-1 text-xs text-[#8c9089]">
             Modifiez votre filtre ou ajoutez un nouveau soin au menu.
           </p>
-        </div>
+        </motion.div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
           {filteredServices.map((srv) => (
-            <div
+            <motion.div
               key={srv.id}
-              className="flex flex-col justify-between rounded-2xl border border-[#e8e4dc] bg-white p-5 transition hover:border-[#cfcbc2] hover:shadow-sm"
+              initial="hidden"
+              animate="visible"
+              variants={staggerItem}
+              className="flex flex-col justify-between rounded-3xl border border-[#e8e4dc] bg-white p-5 cursor-default"
             >
               <div>
                 <div className="flex items-start justify-between gap-3">
@@ -295,9 +310,9 @@ export function ERPServicesView({ salon, onUpdateSalon }: ERPServicesViewProps) 
                   </button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* MODAL: ADD / EDIT SERVICE */}

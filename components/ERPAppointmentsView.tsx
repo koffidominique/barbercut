@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   CalendarDays,
   Plus,
@@ -18,6 +19,7 @@ import {
   MessageSquare,
 } from 'lucide-react'
 import { Appointment, Salon, useSalonStore } from '@/lib/store'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 
 interface ERPAppointmentsViewProps {
   salon: Salon
@@ -215,7 +217,12 @@ export function ERPAppointmentsView({
 
       {/* Appointments List */}
       {filtered.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-10 text-center">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={fadeInUp}
+          className="rounded-3xl border border-dashed border-[#d8d4ca] bg-white p-10 text-center"
+        >
           <CalendarDays className="mx-auto mb-3 text-[#bd664a]" size={32} />
           <h4 className="font-serif text-base font-bold text-[#202321]">
             Aucun rendez-vous trouvé
@@ -223,13 +230,21 @@ export function ERPAppointmentsView({
           <p className="mt-1 text-xs text-[#8c9089]">
             Aucun rendez-vous ne correspond aux filtres actuels.
           </p>
-        </div>
+        </motion.div>
       ) : (
-        <div className="space-y-3">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="space-y-3"
+        >
           {filtered.map((apt) => (
-            <div
+              <motion.div
               key={apt.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-[#e8e4dc] bg-white p-5 transition hover:border-[#d0ccc3] hover:shadow-sm"
+              initial="hidden"
+              animate="visible"
+              variants={staggerItem}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-[#e8e4dc] bg-white p-5 cursor-default"
             >
               {/* Left Info: Time, Client, Service */}
               <div className="flex items-start gap-4">
@@ -342,9 +357,9 @@ export function ERPAppointmentsView({
                   </button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* NEW APPOINTMENT MODAL */}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Users,
   Plus,
@@ -16,6 +17,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Salon, StaffMember } from '@/lib/store'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 
 interface ERPTeamViewProps {
   salon: Salon
@@ -186,11 +188,19 @@ export function ERPTeamView({ salon, onSaveStaff, onDeleteStaff }: ERPTeamViewPr
       </div>
 
       {/* Team Roster Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={staggerContainer}
+        className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+      >
         {salon.staff.map((member) => (
-          <div
+          <motion.div
             key={member.id}
-            className="flex flex-col justify-between rounded-3xl border border-[#e8e4dc] bg-white p-6 shadow-sm transition hover:border-[#cfcbc2] hover:shadow-md"
+            initial="hidden"
+            animate="visible"
+            variants={staggerItem}
+            className="flex flex-col justify-between rounded-3xl border border-[#e8e4dc] bg-white p-6 cursor-default"
           >
             <div>
               <div className="flex items-start justify-between gap-3">
@@ -268,9 +278,9 @@ export function ERPTeamView({ salon, onSaveStaff, onDeleteStaff }: ERPTeamViewPr
                 </button>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {/* MODAL: ADD / EDIT STAFF */}
       {isModalOpen && (

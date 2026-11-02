@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Sparkles,
   Camera,
@@ -22,6 +23,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { Salon, ShowcasePhoto, SalonService } from '@/lib/store'
+import { staggerContainer, staggerItem, fadeInUp } from '@/components/ui/motion'
 
 interface VitrineManagerProps {
   salon: Salon
@@ -350,13 +352,21 @@ export function VitrineManager({
             </button>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={staggerContainer}
+            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          >
             {salon.gallery.map((photo) => {
               const isCurrentCover = salon.coverImage === photo.url || photo.isCover
               return (
-                <div
+                <motion.div
                   key={photo.id}
-                  className="group relative flex flex-col overflow-hidden rounded-2xl border border-[#e8e4dc] bg-white transition hover:shadow-md"
+                  initial="hidden"
+                  animate="visible"
+                  variants={staggerItem}
+                  className="group relative flex flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white cursor-default"
                 >
                   {/* Photo container */}
                   <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#202321]">
@@ -413,10 +423,10 @@ export function VitrineManager({
                       </button>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )
             })}
-          </div>
+          </motion.div>
         </div>
       )}
 

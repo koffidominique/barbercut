@@ -119,6 +119,25 @@ Barber Cuts devient une plateforme SaaS multi-salons avec authentification, base
 
 ---
 
+### 🎨 Améliorations UIX & Animations (immédiat)
+
+L'interface utilisateur a été enrichie avec Framer Motion pour une expérience plus fluide et moderne :
+
+- **Variantes d'animation** (`components/ui/motion.ts`) : `fadeInUp`, `fadeIn`, `scaleHover`, `lift3D`, `borderLift`, `buttonHover`, `cardHover`, `staggerContainer`, `staggerItem`, `modalOverlay`, `modalContent`
+- **Bouton animé** (`components/ui/button.tsx`) : scale au survol, ombre prononcée au tap, transition fluide
+- **Listes en stagger** : `ERPAppointmentsView`, `ERPClientsView`, `ERPServicesView`, `ERPTeamView`, `VitrineManager` — chaque élément apparaît avec un décalage progressif
+- **Cartes en élévation 3D** : survol soulève la carte (`y: -6` à `-8`), ombre portée renforcée, bordure colorée
+- **États vides animés** : `fadeInUp` pour les écrans "Aucun résultat"
+
+#### 2.6 Critères d'acceptation UIX
+- [x] Tous les boutons ont une animation de scale au survol
+- [x] Les listes se dévoilent avec un effet de stagger progressif
+- [x] Les cartes se soulèvent en 3D au survol avec ombre prononcée
+- [x] Le build de production passe sans erreur
+- [x] TypeScript strict : 0 erreur
+
+---
+
 ### PHASE 3 — Marketplace & Expérience Client (Semaines 7-9)
 **Objectif :** Développer la face publique pour attirer et convertir des clients.
 
